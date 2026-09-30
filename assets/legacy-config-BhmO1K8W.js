@@ -1,0 +1,1 @@
+const e={apiKey:"AIzaSyBk1hq2_qeObAqS8ROhy4DFExou6Y32BAk",authDomain:"mant-electrico-87ec4.firebaseapp.com",projectId:"mant-electrico-87ec4",storageBucket:"mant-electrico-87ec4.firebasestorage.app",messagingSenderId:"850548155427",appId:"1:850548155427:web:837f4912367db9fb4c3d96"},a="Planta · app inicial";export{a as LEGACY_ORG_NAME,e as legacyConfig};
