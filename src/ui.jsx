@@ -163,6 +163,23 @@ export function Spark({ values, color = "var(--text)", w = 58, h = 22 }) {
   return <svg width={w} height={h} aria-hidden="true"><polyline className="spark" points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
+/* ───────── Gráfica de tendencias en ondas ─────────
+   Curva suave (Catmull-Rom → Bézier) sin sobrepasar los valores reales entre puntos. */
+function smooth(pts) {
+  if (!pts.length) return "";
+  if (pts.length < 3) return "M" + pts.map((p) => p.join(",")).join(" L");
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const lo = Math.min(p1[1], p2[1]), hi = Math.max(p1[1], p2[1]);
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c1y = Math.min(hi, Math.max(lo, p1[1] + (p2[1] - p0[1]) / 6));
+    const c2y = Math.min(hi, Math.max(lo, p2[1] - (p3[1] - p1[1]) / 6));
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+
 /* ───────── Gráfica de líneas ───────── */
 export function LineChart({ series, labels, unit, height = 170, bands, delay = 0 }) {
   const gid = React.useId().replace(/:/g, "");
@@ -193,16 +210,21 @@ export function LineChart({ series, labels, unit, height = 170, bands, delay = 0
         const d0 = delay + 120 + si * 110;
         const dur = 900;
         const last = pts[pts.length - 1];
+        const curve = smooth(pts);
+        const base = H - pb;
+        const fillOp = series.length === 1 ? 0.38 : 0.16;
         return (
           <g key={si}>
-            {s.area && pts.length > 1 && (
+            {pts.length > 1 && (
               <>
-                <defs><linearGradient id={gid + si} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={s.color} stopOpacity=".35" /><stop offset="1" stopColor={s.color} stopOpacity="0" /></linearGradient></defs>
-                <path className="areaf" d={`M${pts[0][0]},${H - pb} L${pts.map((p) => p.join(",")).join(" L")} L${last[0]},${H - pb} Z`} fill={`url(#${gid + si})`} style={{ animationDelay: d0 + dur * 0.55 + "ms" }} />
+                <defs><linearGradient id={gid + si} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={s.color} stopOpacity={fillOp} /><stop offset="1" stopColor={s.color} stopOpacity="0" /></linearGradient></defs>
+                <g className="wavefill" style={{ animationDelay: -si * 1.7 + "s" }}>
+                  <path className="areaf" d={`${curve} L${last[0]},${base} L${pts[0][0]},${base} Z`} fill={`url(#${gid + si})`} style={{ animationDelay: d0 + dur * 0.55 + "ms" }} />
+                </g>
+                <path className="line" d={curve} pathLength="1200" stroke={s.color} style={{ animationDelay: d0 + "ms", animationDuration: dur + "ms" }} />
               </>
             )}
-            {pts.length > 1 && <polyline className="line" points={pts.map((p) => p.join(",")).join(" ")} stroke={s.color} style={{ animationDelay: d0 + "ms", animationDuration: dur + "ms" }} />}
-            {pts.map((p, k) => <circle key={k} className="dot" cx={p[0]} cy={p[1]} r={k === pts.length - 1 ? 3.5 : 2} fill={s.color} style={{ animationDelay: d0 + (pts.length > 1 ? (k / (pts.length - 1)) * dur * 0.9 : 0) + "ms" }} />)}
+            {pts.map((p, k) => <circle key={k} className="dot" cx={p[0]} cy={p[1]} r={k === pts.length - 1 ? 3.5 : 1.8} fill={s.color} style={{ animationDelay: d0 + (pts.length > 1 ? (k / (pts.length - 1)) * dur * 0.9 : 0) + "ms" }} />)}
             {last && si === 0 && <circle className="pulse" cx={last[0]} cy={last[1]} r="3.5" fill="none" stroke={s.color} strokeWidth="1.5" style={{ animationDelay: d0 + dur + "ms" }} />}
           </g>
         );

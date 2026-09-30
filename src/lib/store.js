@@ -217,6 +217,9 @@ async function createLegacyStore() {
       return fs.onSnapshot(fs.collection(db, col), (qs) => cb(qs.docs.map(MAP[col])), (e) => console.error(col, e));
     },
     async add(col, data) {
+      // Plantas y CCM: mismos campos que guarda la app inicial
+      if (col === "plants") { const r = await fs.addDoc(fs.collection(db, "plants"), { name: data.name }); return r.id; }
+      if (col === "ccms") { const r = await fs.addDoc(fs.collection(db, "ccms"), { name: data.name, plantId: data.plantId }); return r.id; }
       if (col !== "readings") return ro();
       const v = data.values || {};
       const n = (k) => toNum(v[k]);
@@ -265,8 +268,8 @@ async function createLegacyStore() {
       (data.photoIds || []).forEach((pid) => delete pending[pid]);
     },
     async remove(col, id) {
-      if (col !== "readings") return ro();
-      await fs.deleteDoc(fs.doc(db, "readings", id));
+      if (!["readings", "plants", "ccms"].includes(col)) return ro();
+      await fs.deleteDoc(fs.doc(db, col, id));
     },
     subSettings(cb) {
       return fs.onSnapshot(fs.doc(db, "settings", "thresholds"), (s) => cb(s.exists() ? { thresholds: s.data() } : {}), () => cb({}));

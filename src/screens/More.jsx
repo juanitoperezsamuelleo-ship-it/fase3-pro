@@ -158,7 +158,7 @@ function Plants({ ctx }) {
             <b className="display" style={{ fontSize: 16 }}>{p.name}</b>
             {!data.ccms.some((c) => c.plantId === p.id) && !items.some((i) => i.eq.plantId === p.id) && <button className="icon-btn press" onClick={() => store.remove("plants", p.id)} aria-label="Eliminar planta"><Icon n="trash" size={17} /></button>}
           </div>
-          {data.ccms.filter((c) => c.plantId === p.id).map((c) => (
+          {data.ccms.filter((c) => c.plantId === p.id).sort((x, y) => String(x.name).localeCompare(String(y.name), "es", { numeric: true })).map((c) => (
             <div key={c.id} className="row" style={{ minHeight: 40, borderTop: "1px solid var(--s2)" }}>
               <span className="grow" style={{ fontSize: 14 }}>{c.name}</span>
               <span className="muted" style={{ fontSize: 12 }}>{items.filter((i) => i.eq.ccmId === c.id).length} equipos</span>
@@ -245,7 +245,7 @@ export default function More({ ctx }) {
       </main>
     );
   }
-  const visible = MENU.filter((m) => (!m.admin || isAdmin) && !(ctx.readOnly && m.id === "plants"));
+  const visible = MENU.filter((m) => !m.admin || isAdmin);
   return (
     <main className="screen">
       <Header eyebrow={session.orgName} title="Más" />

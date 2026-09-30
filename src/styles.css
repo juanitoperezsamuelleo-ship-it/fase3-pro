@@ -359,3 +359,14 @@ h1, h2, h3, p { margin: 0; }
 .app[data-theme="cristal"][data-mode="light"] .hotrow { background: rgba(255,255,255,.72); }
 .app[data-theme="cristal"] .hotrow:nth-child(n+10)::after { display: none; }
 input[type="search"]::-webkit-search-cancel-button { display: none; }
+
+/* Opciones de las listas desplegables: siempre legibles (el menú lo dibuja el sistema) */
+select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
+.app[data-mode="light"] select option, .app[data-mode="light"] select optgroup { background-color: #FFFFFF; color: #15161B; }
+.app[data-mode="light"] .select { color-scheme: light; }
+.app:not([data-mode="light"]) .select { color-scheme: dark; }
+
+/* Tendencias en ondas: vaivén suave del relleno */
+.wavefill { animation: sway 6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: bottom; }
+@keyframes sway { 0% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(1.5px) scaleY(.985); } 100% { transform: translateY(-1px) scaleY(1.01); } }
+@media (prefers-reduced-motion: reduce) { .wavefill { animation: none; } }
