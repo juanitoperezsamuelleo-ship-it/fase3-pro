@@ -161,14 +161,33 @@ export function localAnswer(q, items, readings, th) {
 /* ───────── Gemini (opcional) ───────── */
 const KEY = "fase3pro-ai";
 export function getAIConfig() {
-  try { return { model: "gemini-2.5-flash", voice: true, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) { return { model: "gemini-2.5-flash", voice: true }; }
+  try { return { model: "", voice: true, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) { return { model: "", voice: true }; }
 }
 export function setAIConfig(c) { try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) { /* */ } }
 export const hasGemini = () => !!getAIConfig().apiKey;
 
-async function gemini(parts, { json = false } = {}) {
-  const { apiKey, model } = getAIConfig();
-  if (!apiKey) throw new Error("Falta la clave de Gemini (Más → IA).");
+/* Elige solo el mejor modelo "flash" disponible para esa clave (Google cambia
+   los nombres de modelos con el tiempo; así la app no se queda desactualizada). */
+export async function pickModel(apiKey) {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d.error && d.error.message) || `Google respondió ${r.status}`);
+  const ok = (d.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map((m) => m.name.replace("models/", ""))
+    .filter((n) => /^gemini-[\d.]+-flash(-latest)?$/.test(n) || n === "gemini-flash-latest");
+  if (!ok.length) throw new Error("Tu clave no tiene modelos Flash disponibles.");
+  const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [0, 0])[1]);
+  ok.sort((a, b) => ver(b) - ver(a) || (a.includes("latest") ? 1 : -1));
+  return ok[0];
+}
+
+async function gemini(parts, { json = false } = {}, retried = false) {
+  const cfg = getAIConfig();
+  const { apiKey } = cfg;
+  if (!apiKey) throw new Error("Falta la clave de Gemini (Más → IA y voz).");
+  let model = cfg.model;
+  if (!model) { model = await pickModel(apiKey); setAIConfig({ ...getAIConfig(), model }); }
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -176,6 +195,9 @@ async function gemini(parts, { json = false } = {}) {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
+    if (res.status === 404 && !retried) { setAIConfig({ ...getAIConfig(), model: "" }); return gemini(parts, { json }, true); }
+    if (res.status === 429) throw new Error("Se alcanzó el límite gratuito por ahora. Intenta en unos minutos.");
+    if (res.status === 400 && /API key/i.test((e.error && e.error.message) || "")) throw new Error("La clave no es válida. Revísala en Más → IA y voz.");
     throw new Error((e.error && e.error.message) || `Gemini respondió ${res.status}`);
   }
   const data = await res.json();
@@ -192,6 +214,11 @@ export function contextFor(items, th) {
     evaluacion: i.ev ? i.ev.rows.map((r) => `${r.name}: ${r.value} (${LEVELS[r.level].label})`) : [],
     tendenciaDT_Cmes: i.dtTrend ? +i.dtTrend.toFixed(2) : null
   })).concat([{ umbrales: th }]);
+}
+
+export async function testGemini() {
+  const t = await gemini([{ text: "Responde solo: Conectado" }]);
+  return { ok: true, model: getAIConfig().model, text: t.trim() };
 }
 
 export async function askGemini(question, items, th) {

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { DEFAULT_THRESHOLDS, LEVELS, localDay } from "../lib/calc.js";
 import { htmlReport, openHtml, excelReport } from "../lib/reports.js";
-import { getAIConfig, setAIConfig, speak } from "../lib/ai.js";
+import { getAIConfig, setAIConfig, speak, testGemini } from "../lib/ai.js";
 import { Icon, Header, Field, Stepper, Seg, useToast, Pill, Empty } from "../ui.jsx";
 
 const MENU = [
@@ -92,6 +92,7 @@ function AISettings() {
   const toast = useToast();
   const [c, setC] = useState(getAIConfig());
   const [show, setShow] = useState(false);
+  const [test, setTest] = useState("");
   const save = (n) => { setC(n); setAIConfig(n); };
   return (
     <>
@@ -103,10 +104,14 @@ function AISettings() {
         <b style={{ fontSize: 14 }}>IA avanzada con Gemini · opcional</b>
         <span className="muted" style={{ fontSize: 13 }}>Analiza fotos, lee placas y responde preguntas abiertas. Usa la capa gratuita de Google: crea tu clave en aistudio.google.com → “Get API key”. La clave queda solo en este dispositivo.</span>
         <div className="row" style={{ gap: 6 }}>
-          <input className="input mono grow" type={show ? "text" : "password"} value={c.apiKey || ""} onChange={(e) => save({ ...c, apiKey: e.target.value.trim() })} placeholder="Pega tu API key" aria-label="API key de Gemini" style={{ background: "var(--s2)", fontSize: 14 }} />
+          <input className="input mono grow" type={show ? "text" : "password"} value={c.apiKey || ""} onChange={(e) => { save({ ...c, apiKey: e.target.value.trim(), model: "" }); setTest(""); }} placeholder="Pega tu API key" aria-label="API key de Gemini" style={{ background: "var(--s2)", fontSize: 14 }} />
           <button className="icon-btn press" onClick={() => setShow(!show)} aria-label={show ? "Ocultar" : "Mostrar"}><Icon n="eye" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={18} /></button>
         </div>
-        <Field label="Modelo"><input className="input mono" value={c.model} onChange={(e) => save({ ...c, model: e.target.value.trim() || "gemini-2.5-flash" })} style={{ background: "var(--s2)", fontSize: 14 }} /></Field>
+        <button className="btn press" disabled={!c.apiKey || test === "…"} aria-disabled={!c.apiKey} onClick={async () => { setTest("…"); try { const r = await testGemini(); setC(getAIConfig()); setTest("✓ Conectado con " + r.model); } catch (e) { setTest("✗ " + e.message); } }}>
+          {test === "…" ? "Probando…" : "Probar conexión"}
+        </button>
+        {test && test !== "…" && <p className="fade" style={{ fontSize: 13, color: test.startsWith("✓") ? "var(--ok)" : "var(--on-bad)" }}>{test}</p>}
+        {c.model && <p className="muted mono" style={{ fontSize: 11 }}>Modelo: {c.model} (se elige solo)</p>}
       </div>
       <div className="card in row" style={{ justifyContent: "space-between", animationDelay: "80ms" }}>
         <span style={{ fontSize: 14 }}><b>Respuestas por voz</b><br /><span className="muted" style={{ fontSize: 12 }}>El asistente lee sus respuestas</span></span>
