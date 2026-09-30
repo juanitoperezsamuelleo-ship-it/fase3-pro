@@ -16,7 +16,7 @@ function limitTemplate(T, fields) {
 function Picker({ ctx, onPick }) {
   const { items, data, go } = ctx;
   const [limit, setLimit] = useState(40);
-  const list = applyFilter(items, ctx.filter).sort((a, b) => a.eq.name.localeCompare(b.eq.name, "es", { numeric: true }));
+  const list = applyFilter(items, ctx.filter, ctx.data).sort((a, b) => a.eq.name.localeCompare(b.eq.name, "es", { numeric: true }));
   const shown = list.slice(0, limit);
   const byType = TYPE_ORDER.map((t) => ({ t, list: shown.filter((i) => i.eq.type === t) })).filter((g) => g.list.length);
   return (
@@ -58,6 +58,8 @@ export default function Reading({ ctx }) {
   const T = useMemo(() => (it ? limitTemplate(it.T, store.fields) : null), [it, store.fields]);
   const techs = data.technicians || [];
   const [techId, setTechId] = useState(() => {
+    if (editing && editing.userId) return editing.userId;
+    try { const last = localStorage.getItem("fase3pro-tech"); if (last) return last; } catch (e) { /* */ }
     const me = String((session && session.name) || "").trim().toLowerCase();
     const t = techs.find((x) => String(x.name || "").trim().toLowerCase() === me);
     return t ? t.id : "";
@@ -120,7 +122,7 @@ export default function Reading({ ctx }) {
     if (!filled) return toast("Registra al menos un valor", "warn");
     if (store.subTechnicians) {
       if (!requiredDone(it.eq.type, values)) return toast("Completa corriente, tensión y temperatura (L1, L2, L3 y máximo)", "warn");
-      if (techs.length && !techId) return toast("Elige el técnico que tomó los datos", "warn");
+      if (techs.length && !techs.some((x) => x.id === techId)) return toast("Elige el técnico que tomó los datos", "warn");
     }
     const tech = techs.find((x) => x.id === techId);
     setBusy(true);
@@ -130,7 +132,7 @@ export default function Reading({ ctx }) {
       const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined && v !== "-"));
       if (editing) {
         (editing.photoIds || []).filter((id) => !photoIds.includes(id)).forEach((id) => store.removePhoto(id));
-        await store.update("readings", editing.id, { values: clean, notes: notes.trim(), date, photoIds });
+        await store.update("readings", editing.id, { values: clean, notes: notes.trim(), date, photoIds, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
         toast("Lectura actualizada");
       } else {
         await store.add("readings", { equipmentId: it.eq.id, type: it.eq.type, date, values: clean, notes: notes.trim(), photoIds, userId: session.uid, userName: tech ? tech.name : session.name || session.email, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
@@ -152,6 +154,16 @@ export default function Reading({ ctx }) {
         right={prev && <span className="muted" style={{ fontSize: 12, textAlign: "right", paddingTop: 6 }}>Anterior<br />{relDays(prev.date)}</span>} />
       {it.eq.name.includes(" · ") && <p className="muted in" style={{ marginTop: -6, fontSize: 14 }}>{it.eq.name.split(" · ").slice(1).join(" · ")}</p>}
 
+      {store.subTechnicians && (
+        <label className="row card in" style={{ gap: 10, padding: "6px 6px 6px 14px" }}>
+          <Icon n="user" size={18} style={{ color: techId ? "var(--lilac)" : "var(--muted)" }} />
+          <span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>Técnico</span>
+          <select className="select grow" value={techId} onChange={(e) => { setTechId(e.target.value); try { localStorage.setItem("fase3pro-tech", e.target.value); } catch (er) { /* */ } }} aria-label="Técnico que toma los datos" style={{ height: 44, fontSize: 15, background: "transparent", boxShadow: "none" }}>
+            <option value="">Selecciona el técnico</option>
+            {techs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+      )}
       <div className="row in" style={{ gap: 6, animationDelay: "40ms" }} role="tablist" aria-label="Secciones">
         {T.sections.map((s) => {
           const on = s.id === section.id;
@@ -242,14 +254,6 @@ export default function Reading({ ctx }) {
       </section>
 
       <label className="field in"><span>Notas</span><textarea className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Hallazgos, condición de carga, acciones…" /></label>
-      {store.subTechnicians && (
-        <label className="field in"><span>Técnico que toma los datos</span>
-          <select className="select" value={techId} onChange={(e) => setTechId(e.target.value)}>
-            <option value="">Selecciona el técnico</option>
-            {techs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </label>
-      )}
       <label className="field in"><span>Fecha y hora (hora local)</span><input className="input" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} /></label>
 
       <div className="row" style={{ gap: 8 }}>

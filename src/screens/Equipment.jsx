@@ -107,7 +107,7 @@ export default function Equipment({ ctx }) {
   const [form, setForm] = useState(route.create ? {} : null);
   const [confirm, setConfirm] = useState(false);
 
-  const list = applyFilter(items, ctx.filter).filter((i) => type === "all" || i.eq.type === type)
+  const list = applyFilter(items, ctx.filter, ctx.data).filter((i) => type === "all" || i.eq.type === type)
     .sort((a, b) => a.eq.name.localeCompare(b.eq.name));
   const types = TYPE_ORDER.filter((t) => items.some((i) => i.eq.type === t));
   const it = sel && items.find((i) => i.eq.id === sel);
@@ -187,7 +187,7 @@ export default function Equipment({ ctx }) {
               <button className="btn press" style={{ flex: 1 }} onClick={() => go("read", { eqId: it.eq.id })}><Icon n="plus" size={18} /> Lectura</button>
               <button className="btn sec press" style={{ flex: 1 }} onClick={() => go("hist", { eqId: it.eq.id })}><Icon n="chart" size={18} /> Histórico</button>
             </div>
-            {isAdmin && (
+            {ctx.canManage && (
               <div className="row" style={{ gap: 8 }}>
                 <button className="btn ghost press" style={{ flex: 1, height: 44 }} onClick={() => { setForm({ ...it.eq }); setSel(null); }}><Icon n="edit" size={17} /> Editar</button>
                 {!confirm

@@ -237,18 +237,48 @@ async function createLegacyStore() {
       (data.photoIds || []).forEach((id) => delete pending[id]);
       return ref.id;
     },
-    update: ro, remove: ro,
+    // Solo el administrador (lo exigen también las reglas de la app inicial)
+    async update(col, id, data) {
+      if (col !== "readings") return ro();
+      const v = data.values || {};
+      const n = (k) => toNum(v[k]);
+      let termo = null, equipo = null;
+      (data.photoIds || []).forEach((pid) => {
+        const url = photoCache[pid] || pending[pid] || null;
+        if (pid.startsWith("t:")) termo = url;
+        else if (pid.startsWith("e:")) equipo = url;
+        else if (!termo) termo = url;
+        else if (!equipo) equipo = url;
+      });
+      const patch = {
+        date: data.date,
+        iL1: n("iL1"), iL2: n("iL2"), iL3: n("iL3"),
+        vL1: n("vL1"), vL2: n("vL2"), vL3: n("vL3"),
+        tL1: n("tL1"), tL2: n("tL2"), tL3: n("tL3"), tMax: n("tMax"),
+        tBreaker: n("tBreaker"), tContactor: n("tContactor"),
+        notes: data.notes || "",
+        photoTermoBase64: termo, photoEquipoBase64: equipo
+      };
+      if (data.technicianId) { patch.technicianId = data.technicianId; patch.technicianName = data.technicianName || ""; }
+      const t = new Promise((_, rej) => setTimeout(() => rej(new Error("La conexión está lenta. El cambio se enviará solo al volver la señal.")), 15000));
+      await Promise.race([fs.updateDoc(fs.doc(db, "readings", id), patch), t]);
+      (data.photoIds || []).forEach((pid) => delete pending[pid]);
+    },
+    async remove(col, id) {
+      if (col !== "readings") return ro();
+      await fs.deleteDoc(fs.doc(db, "readings", id));
+    },
     subSettings(cb) {
       return fs.onSnapshot(fs.doc(db, "settings", "thresholds"), (s) => cb(s.exists() ? { thresholds: s.data() } : {}), () => cb({}));
     },
-    saveSettings: ro,
+    async saveSettings(patch) { if (!patch.thresholds) return ro(); await fs.setDoc(fs.doc(db, "settings", "thresholds"), patch.thresholds, { merge: true }); },
     async putPhoto(dataUrl) { const id = "tmp:" + Math.random().toString(36).slice(2); pending[id] = dataUrl; return id; },
     async getPhoto(id) { return photoCache[id] || pending[id] || null; },
     async removePhoto() {},
     subUsers(cb) {
       return fs.onSnapshot(fs.collection(db, "users"), (qs) => cb(qs.docs.map((d) => ({ id: d.id, name: d.data().displayName || d.data().email, email: d.data().email, role: d.data().role || "tecnico" }))), () => cb([]));
     },
-    setRole: ro,
+    async setRole(userId, role) { await fs.updateDoc(fs.doc(db, "users", userId), { role }); },
     async resetDemo() {}
   };
 }

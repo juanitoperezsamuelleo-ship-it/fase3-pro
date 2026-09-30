@@ -260,11 +260,15 @@ export function CountUp({ text, dur = 800, delay = 0 }) {
 
 /* ───────── Filtros: planta · CCM / ubicación · búsqueda (compartidos entre pantallas) ───────── */
 const byName = (a, b) => String(a.name).localeCompare(String(b.name), "es", { numeric: true });
-export function applyFilter(items, filter) {
+export function applyFilter(items, filter, data) {
   const q = (filter.q || "").trim().toLowerCase();
-  return items.filter((i) => (!filter.plantId || i.eq.plantId === filter.plantId) && (!filter.ccmId || i.eq.ccmId === filter.ccmId) && (!q || i.eq.name.toLowerCase().includes(q) || String(i.eq.typeLabel || "").toLowerCase().includes(q)));
+  const ccmName = {};
+  const plantName = {};
+  if (data) { data.ccms.forEach((c) => { ccmName[c.id] = String(c.name || "").toLowerCase(); }); data.plants.forEach((p) => { plantName[p.id] = String(p.name || "").toLowerCase(); }); }
+  return items.filter((i) => (!filter.plantId || i.eq.plantId === filter.plantId) && (!filter.ccmId || i.eq.ccmId === filter.ccmId) &&
+    (!q || i.eq.name.toLowerCase().includes(q) || String(i.eq.typeLabel || "").toLowerCase().includes(q) || (ccmName[i.eq.ccmId] || "").includes(q) || (plantName[i.eq.plantId] || "").includes(q)));
 }
-export function FilterBar({ ctx, placeholder = "Buscar equipo por nombre…", count }) {
+export function FilterBar({ ctx, placeholder = "Buscar por equipo o CCM…", count }) {
   const { filter, setFilter, data } = ctx;
   const plants = data.plants.slice().sort(byName);
   const ccms = data.ccms.filter((c) => !filter.plantId || c.plantId === filter.plantId).sort(byName);

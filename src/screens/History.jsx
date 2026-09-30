@@ -36,7 +36,7 @@ function Detail({ ctx, r, it, onClose }) {
   const [confirm, setConfirm] = useState(false);
   const [big, setBig] = useState(null);
   const ev = evaluate(it.eq.type, r.values || {}, th, it.eq.plate || {});
-  const canEdit = !ctx.readOnly && (isAdmin || r.userId === session.uid);
+  const canEdit = isAdmin || (!ctx.readOnly && r.userId === session.uid);
   const del = async () => {
     (r.photoIds || []).forEach((p) => store.removePhoto(p));
     await store.remove("readings", r.id);
@@ -221,7 +221,7 @@ export default function History({ ctx }) {
   const { route, items, data, go, th } = ctx;
   const it = route.eqId && items.find((i) => i.eq.id === route.eqId);
   const [limit, setLimit] = useState(40);
-  const sorted = useMemo(() => sortByRisk(applyFilter(items, ctx.filter)), [items, ctx.filter]);
+  const sorted = useMemo(() => sortByRisk(applyFilter(items, ctx.filter, ctx.data)), [items, ctx.filter]);
   if (it) return <EquipmentHistory ctx={ctx} it={it} />;
   const ids = new Set(sorted.map((i) => i.eq.id));
   const recent = data.readings.filter((r) => ids.has(r.equipmentId)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 12);

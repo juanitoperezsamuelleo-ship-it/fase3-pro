@@ -185,14 +185,14 @@ function Users({ ctx }) {
   const copy = async () => { try { await navigator.clipboard.writeText(session.inviteCode); toast("Código copiado"); } catch (e) { toast(session.inviteCode, "warn"); } };
   return (
     <>
-      <div className="card in" style={{ background: "var(--tint-ai)", display: "flex", flexDirection: "column", gap: 6 }}>
+      {ctx.readOnly ? <p className="muted in" style={{ fontSize: 13 }}>Las cuentas nuevas se crean desde la app inicial. Aquí puedes cambiar el rol de cada usuario.</p> : <div className="card in" style={{ background: "var(--tint-ai)", display: "flex", flexDirection: "column", gap: 6 }}>
         <span className="muted" style={{ fontSize: 12 }}>CÓDIGO DE LA EMPRESA</span>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="display" style={{ fontSize: 28, letterSpacing: ".12em", color: "var(--lilac)" }}>{session.inviteCode || "—"}</span>
           <button className="icon-btn press" onClick={copy} aria-label="Copiar código"><Icon n="copy" size={18} /></button>
         </div>
         <span className="muted" style={{ fontSize: 13 }}>Tus técnicos lo escriben al crear su cuenta (“Unirme con código”).</span>
-      </div>
+      </div>}
       {data.users.map((u) => (
         <div key={u.id} className="card in row" style={{ justifyContent: "space-between" }}>
           <span style={{ minWidth: 0 }}><b style={{ fontSize: 14 }}>{u.name}</b>{u.id === session.uid && <span className="muted"> · tú</span>}<br /><span className="muted ellipsis" style={{ fontSize: 12 }}>{u.email}</span></span>
@@ -245,7 +245,7 @@ export default function More({ ctx }) {
       </main>
     );
   }
-  const visible = MENU.filter((m) => !m.admin || isAdmin);
+  const visible = MENU.filter((m) => (!m.admin || isAdmin) && !(ctx.readOnly && m.id === "plants"));
   return (
     <main className="screen">
       <Header eyebrow={session.orgName} title="Más" />

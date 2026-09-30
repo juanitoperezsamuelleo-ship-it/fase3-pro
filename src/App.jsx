@@ -127,7 +127,7 @@ export default function App() {
   }, [prefs.theme, mode]);
 
   const readOnly = !!(store && store.readOnly);
-  const ctx = { filter, setFilter, readOnly, mode, store, session, data, th, items, go, route, prefs, updatePrefs, isAdmin: !readOnly && session && session.role === "admin", demo: IS_DEMO };
+  const ctx = { filter, setFilter, readOnly, mode, store, session, data, th, items, go, route, prefs, updatePrefs, isAdmin: !!(session && session.role === "admin"), canManage: !readOnly && !!(session && session.role === "admin"), demo: IS_DEMO };
 
   let body;
   if (intro) body = <Intro full={intro === "full"} onDone={endIntro} />;
