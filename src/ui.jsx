@@ -257,3 +257,43 @@ export function CountUp({ text, dur = 800, delay = 0 }) {
   const dec = (m[2].split(",")[1] || "").length;
   return <>{m[1]}{Number(v).toFixed(dec).replace(".", ",")}{m[3]}</>;
 }
+
+/* ───────── Filtros: planta · CCM / ubicación · búsqueda (compartidos entre pantallas) ───────── */
+const byName = (a, b) => String(a.name).localeCompare(String(b.name), "es", { numeric: true });
+export function applyFilter(items, filter) {
+  const q = (filter.q || "").trim().toLowerCase();
+  return items.filter((i) => (!filter.plantId || i.eq.plantId === filter.plantId) && (!filter.ccmId || i.eq.ccmId === filter.ccmId) && (!q || i.eq.name.toLowerCase().includes(q) || String(i.eq.typeLabel || "").toLowerCase().includes(q)));
+}
+export function FilterBar({ ctx, placeholder = "Buscar equipo por nombre…", count }) {
+  const { filter, setFilter, data } = ctx;
+  const plants = data.plants.slice().sort(byName);
+  const ccms = data.ccms.filter((c) => !filter.plantId || c.plantId === filter.plantId).sort(byName);
+  const active = filter.plantId || filter.ccmId || filter.q;
+  return (
+    <div className="filters in" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {(plants.length > 0 || ccms.length > 0) && (
+        <div className="row" style={{ gap: 8 }}>
+          <select className="select grow" value={filter.plantId} onChange={(e) => setFilter({ ...filter, plantId: e.target.value, ccmId: "" })} aria-label="Planta" style={{ height: 46, fontSize: 14 }}>
+            <option value="">Todas las plantas</option>
+            {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <select className="select grow" value={filter.ccmId} onChange={(e) => setFilter({ ...filter, ccmId: e.target.value })} aria-label="CCM o ubicación" style={{ height: 46, fontSize: 14 }}>
+            <option value="">Todos los CCM</option>
+            {ccms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+      <label className="row card" style={{ padding: "0 6px 0 14px", height: 48 }}>
+        <Icon n="search" size={18} style={{ color: "var(--muted)" }} />
+        <input className="grow" type="search" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} placeholder={placeholder} aria-label="Buscar equipo" style={{ background: "none", border: 0, height: 46, outline: "none", fontSize: 16, minWidth: 0 }} />
+        {count !== undefined && <span className="mono muted" style={{ fontSize: 12, padding: "0 6px" }}>{count}</span>}
+        {active && <button className="icon-btn press" style={{ width: 36, height: 36 }} onClick={() => setFilter({ plantId: "", ccmId: "", q: "" })} aria-label="Limpiar filtros"><Icon n="close" size={15} /></button>}
+      </label>
+    </div>
+  );
+}
+
+export function ShowMore({ total, shown, onMore }) {
+  if (shown >= total) return null;
+  return <button className="btn sec press" style={{ height: 44, width: "100%" }} onClick={onMore}>Mostrar más ({total - shown})</button>;
+}

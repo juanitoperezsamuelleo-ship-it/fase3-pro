@@ -16,7 +16,7 @@ export function EqRow({ it, ctx, onClick, th }) {
       <span className="sev" style={{ width: it.rank >= 3 ? 5 : 3, background: L.color }} />
       <span style={{ minWidth: 0 }}>
         <span className="ellipsis" style={{ display: "block", fontWeight: 700, fontSize: 14 }}>{it.eq.name}</span>
-        <span className="ellipsis muted" style={{ display: "block", fontSize: 12 }}>{d ? d.title : it.T.label}{ccm ? " · " + ccm.name : ""}</span>
+        <span className="ellipsis muted" style={{ display: "block", fontSize: 12 }}>{d ? d.title : it.eq.typeLabel || it.T.label}{ccm ? " · " + ccm.name : ""} · {it.readings.length} lect.</span>
       </span>
       <Spark values={it.series.map((s) => s.dT)} color={L.color} />
       <span style={{ textAlign: "right" }}>
@@ -76,14 +76,7 @@ export default function Home({ ctx }) {
         <span className="row" style={{ gap: 6, fontSize: 13, fontWeight: 700, marginTop: 2 }}>Preguntar al asistente <Icon n="chev" size={15} /></span>
       </button>
 
-      {ctx.readOnly ? (
-        <div className="card in row" style={{ gap: 10, fontSize: 13, animationDelay: "110ms" }}>
-          <Icon n="info" size={18} style={{ color: "var(--lilac)" }} />
-          <span className="grow">Conectada a los datos de la <b>app inicial</b> en modo solo lectura. Las lecturas se siguen registrando allá.</span>
-        </div>
-      ) : (
-        <button className="btn press in" onClick={() => go("read")} style={{ animationDelay: "110ms" }}><Icon n="plus" /> Nueva lectura</button>
-      )}
+      <button className="btn press in" onClick={() => go("read")} style={{ animationDelay: "110ms" }}><Icon n="plus" /> Nueva lectura</button>
 
       {!items.length && <Empty icon="box" title="Aún no tienes equipos" text="Crea el primero para empezar a registrar lecturas." action={!ctx.readOnly && <button className="btn sec press" onClick={() => go("equip", { create: true })} style={{ height: 42 }}>Crear equipo</button>} />}
 

@@ -353,3 +353,9 @@ h1, h2, h3, p { margin: 0; }
 .app[data-theme="cristal"] .sheet.out { animation: sheetOut .22s var(--out) both; }
 .app[data-theme="cristal"] .bubble.in { animation: bubbleIn .4s var(--spring) both; }
 @keyframes bubbleIn { from { opacity: 0; transform: translateY(10px) scale(.92); } to { opacity: 1; transform: none; } }
+/* Listas largas: filas sin desenfoque propio (rinden mejor con 100+ equipos) */
+.app[data-theme="cristal"] .hotrow { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.app[data-theme="cristal"][data-mode="dark"] .hotrow { background: rgba(255,255,255,.065); }
+.app[data-theme="cristal"][data-mode="light"] .hotrow { background: rgba(255,255,255,.72); }
+.app[data-theme="cristal"] .hotrow:nth-child(n+10)::after { display: none; }
+input[type="search"]::-webkit-search-cancel-button { display: none; }

@@ -61,7 +61,7 @@ function Nav({ tab, go, readOnly }) {
   return (
     <nav className="nav" aria-label="Principal" ref={ref}>
       {pos && <span className="nav-glass" aria-hidden="true" style={{ left: pos.l, right: pos.r, transition: tr }} />}
-      {NAV.filter((n) => !(readOnly && n.id === "read")).map((n) => (
+      {NAV.map((n) => (
         <button key={n.id} aria-current={tab === n.id ? "page" : undefined} onClick={() => go(n.id)} aria-label={n.label}>
           <Icon n={n.icon} size={20} /><span className="nav-l">{n.label}</span>
         </button>
@@ -88,7 +88,8 @@ function Intro({ onDone, full }) {
 export default function App() {
   const [store, setStore] = useState(null);
   const [session, setSession] = useState(undefined);
-  const [data, setData] = useState({ plants: [], ccms: [], equipment: [], readings: [], settings: {}, users: [] });
+  const [data, setData] = useState({ plants: [], ccms: [], equipment: [], readings: [], settings: {}, users: [], technicians: [] });
+  const [filter, setFilter] = useState({ plantId: "", ccmId: "", q: "" });
   const [route, setRoute] = useState({ tab: "home" });
   const [prefs, setP] = useState(getPrefs);
   const [intro, setIntro] = useState(() => (getPrefs().intro === "ninguna" ? null : safeGet("fase3pro-intro") === localDay() ? "short" : "full"));
@@ -101,6 +102,7 @@ export default function App() {
     const offs = COLS.map((c) => store.sub(c, (rows) => setData((d) => ({ ...d, [c]: rows }))));
     offs.push(store.subSettings((s) => setData((d) => ({ ...d, settings: s || {} }))));
     offs.push(store.subUsers((u) => setData((d) => ({ ...d, users: u }))));
+    if (store.subTechnicians) offs.push(store.subTechnicians((t) => setData((d) => ({ ...d, technicians: t }))));
     return () => offs.forEach((f) => f && f());
   }, [store, session && session.orgId]); // eslint-disable-line
 
@@ -125,14 +127,14 @@ export default function App() {
   }, [prefs.theme, mode]);
 
   const readOnly = !!(store && store.readOnly);
-  const ctx = { readOnly, mode, store, session, data, th, items, go, route, prefs, updatePrefs, isAdmin: !readOnly && session && session.role === "admin", demo: IS_DEMO };
+  const ctx = { filter, setFilter, readOnly, mode, store, session, data, th, items, go, route, prefs, updatePrefs, isAdmin: !readOnly && session && session.role === "admin", demo: IS_DEMO };
 
   let body;
   if (intro) body = <Intro full={intro === "full"} onDone={endIntro} />;
   else if (session === undefined || !store) body = <div className="screen" style={{ alignItems: "center", justifyContent: "center" }}><div className="muted">Cargando…</div></div>;
   else if (!session || session.pending || session.error) body = <Auth ctx={ctx} />;
   else {
-    const S = { home: Home, read: readOnly ? Home : Reading, equip: Equipment, hist: History, more: More, ai: Assistant }[route.tab] || Home;
+    const S = { home: Home, read: Reading, equip: Equipment, hist: History, more: More, ai: Assistant }[route.tab] || Home;
     body = (
       <>
         <S ctx={ctx} key={route.tab + (route.k || "")} />

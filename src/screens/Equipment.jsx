@@ -3,7 +3,7 @@ import { LEVELS, fmt, relDays, sanitizeDecimal } from "../lib/calc.js";
 import { TYPES, TYPE_ORDER } from "../lib/templates.js";
 import { compressImage } from "../lib/image.js";
 import { diagnoseItem, hasGemini, readNameplate } from "../lib/ai.js";
-import { Icon, Pill, Sheet, useToast, Header, Field, Empty } from "../ui.jsx";
+import { Icon, Pill, Sheet, useToast, Header, Field, Empty, FilterBar, applyFilter, ShowMore } from "../ui.jsx";
 
 function EqForm({ ctx, initial, onClose }) {
   const { store, data } = ctx;
@@ -86,6 +86,12 @@ function EqForm({ ctx, initial, onClose }) {
   );
 }
 
+function EqThumb({ id, store }) {
+  const [url, setUrl] = useState(null);
+  React.useEffect(() => { let on = true; store.getPhoto(id).then((u) => on && setUrl(u)); return () => { on = false; }; }, [id]); // eslint-disable-line
+  return <span style={{ width: 40, height: 40, borderRadius: 12, overflow: "hidden", background: "var(--s2)", flexShrink: 0 }}>{url && <img src={url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}</span>;
+}
+
 function EqPhoto({ id, store }) {
   const [url, setUrl] = useState(null);
   React.useEffect(() => { let on = true; store.getPhoto(id).then((u) => on && setUrl(u)); return () => { on = false; }; }, [id]); // eslint-disable-line
@@ -95,13 +101,13 @@ function EqPhoto({ id, store }) {
 export default function Equipment({ ctx }) {
   const { items, data, go, route, isAdmin, store, th } = ctx;
   const toast = useToast();
-  const [q, setQ] = useState("");
+  const [limit, setLimit] = useState(40);
   const [type, setType] = useState("all");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(route.create ? {} : null);
   const [confirm, setConfirm] = useState(false);
 
-  const list = items.filter((i) => (type === "all" || i.eq.type === type) && (!q || i.eq.name.toLowerCase().includes(q.toLowerCase())))
+  const list = applyFilter(items, ctx.filter).filter((i) => type === "all" || i.eq.type === type)
     .sort((a, b) => a.eq.name.localeCompare(b.eq.name));
   const types = TYPE_ORDER.filter((t) => items.some((i) => i.eq.type === t));
   const it = sel && items.find((i) => i.eq.id === sel);
@@ -117,10 +123,7 @@ export default function Equipment({ ctx }) {
   return (
     <main className="screen">
       <Header eyebrow={`${items.length} equipos`} title="Equipos" right={!ctx.readOnly && <button className="icon-btn light press" onClick={() => setForm({})} aria-label="Nuevo equipo"><Icon n="plus" /></button>} />
-      <label className="row card in" style={{ padding: "0 14px", height: 50 }}>
-        <Icon n="search" size={18} style={{ color: "var(--muted)" }} />
-        <input className="grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar" aria-label="Buscar equipo" style={{ background: "none", border: 0, height: 48, outline: "none", fontSize: 16 }} />
-      </label>
+      <FilterBar ctx={ctx} count={list.length} />
       {types.length > 1 && (
         <div className="row in" style={{ gap: 6, overflowX: "auto", margin: "0 -16px", padding: "0 16px" }}>
           <button className="chip press" aria-pressed={type === "all"} onClick={() => setType("all")}>Todos</button>
@@ -128,12 +131,13 @@ export default function Equipment({ ctx }) {
         </div>
       )}
       {!items.length && <Empty icon="box" title="Crea tu primer equipo" text="Cada tipo trae sus propios puntos de medida." action={!ctx.readOnly && <button className="btn sec press" style={{ height: 42 }} onClick={() => setForm({})}>Crear equipo</button>} />}
+      {items.length > 0 && !list.length && <Empty icon="search" title="Sin resultados" text="Cambia la planta, el CCM o la búsqueda." />}
       <div>
-        {list.map((i, k) => {
+        {list.slice(0, limit).map((i, k) => {
           const ccm = data.ccms.find((c) => c.id === i.eq.ccmId);
           return (
             <button key={i.eq.id} className="hotrow in" style={{ gridTemplateColumns: "40px minmax(0,1fr) auto", animationDelay: Math.min(k, 10) * 25 + "ms" }} onClick={() => setSel(i.eq.id)}>
-              <span style={{ width: 40, height: 40, borderRadius: 12, background: i.T.color, color: "#111214", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon d={i.T.icon} size={19} /></span>
+              {i.eq.photoId ? <EqThumb id={i.eq.photoId} store={store} /> : <span style={{ width: 40, height: 40, borderRadius: 12, background: i.T.color, color: "#111214", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon d={i.T.icon} size={19} /></span>}
               <span style={{ minWidth: 0 }}>
                 <span className="ellipsis" style={{ display: "block", fontWeight: 700, fontSize: 14 }}>{i.eq.name}</span>
                 <span className="muted ellipsis" style={{ display: "block", fontSize: 12 }}>{i.eq.typeLabel || i.T.label}{ccm ? " · " + ccm.name : ""} · {i.readings.length} lecturas</span>
@@ -143,6 +147,7 @@ export default function Equipment({ ctx }) {
           );
         })}
       </div>
+      <ShowMore total={list.length} shown={Math.min(limit, list.length)} onMore={() => setLimit(limit + 60)} />
 
       <Sheet open={!!it} onClose={() => { setSel(null); setConfirm(false); }} label="Detalle del equipo">
         {it && (
@@ -179,7 +184,7 @@ export default function Equipment({ ctx }) {
               </div>
             )}
             <div className="row" style={{ gap: 8 }}>
-              {!ctx.readOnly && <button className="btn press" style={{ flex: 1 }} onClick={() => go("read", { eqId: it.eq.id })}><Icon n="plus" size={18} /> Lectura</button>}
+              <button className="btn press" style={{ flex: 1 }} onClick={() => go("read", { eqId: it.eq.id })}><Icon n="plus" size={18} /> Lectura</button>
               <button className="btn sec press" style={{ flex: 1 }} onClick={() => go("hist", { eqId: it.eq.id })}><Icon n="chart" size={18} /> Histórico</button>
             </div>
             {isAdmin && (

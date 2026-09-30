@@ -144,17 +144,18 @@ async function createFirebaseStore() {
   };
 }
 
-/* ─────────── APP INICIAL (solo lectura, mismo Firebase) ───────────
+/* ─────────── APP INICIAL (mismo Firebase) ───────────
    Lee las colecciones de FASE·3 Predictivo tal como están y las traduce al
-   formato de esta app. Ninguna función escribe en esa base de datos. */
+   formato de esta app. La ÚNICA escritura permitida es crear lecturas nuevas,
+   con exactamente los mismos campos que guarda la app inicial. No edita ni
+   borra nada. */
 const LEGACY_KEYS = ["iL1", "iL2", "iL3", "vL1", "vL2", "vL3", "tL1", "tL2", "tL3", "tMax", "tBreaker", "tContactor"];
+// La app inicial mide lo mismo en todos los equipos (L1-L3 de I, V y T,
+// punto máximo, breaker y contactor), así que solo se usan las plantillas de
+// motor o de tablero/CCM, que comparten esos puntos de medida.
 function legacyType(t) {
   const x = String(t || "").toLowerCase();
-  if (/trafo|transf/.test(x)) return "trafo";
-  if (/gener|planta de emerg/.test(x)) return "gen";
-  if (/capac/.test(x)) return "cap";
-  if (/rectif|cargador/.test(x)) return "rect";
-  if (/motor|bomba|ventil|compres|agitad|extract|soplad/.test(x)) return "motor";
+  if (/motor|bomba|ventil|compres|agitad|extract|soplad|reductor/.test(x)) return "motor";
   return "tablero";
 }
 async function createLegacyStore() {
@@ -167,7 +168,10 @@ async function createLegacyStore() {
   const auth = au.getAuth(app);
   await au.setPersistence(auth, au.browserLocalPersistence).catch(() => {});
   const photoCache = {};
-  const ro = async () => { throw new Error("Esta versión es de solo lectura: registra y edita en la app inicial."); };
+  const pending = {};
+  const ro = async () => { throw new Error("Esto se hace en la app inicial."); };
+  let session = null;
+  const toNum = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
   const mapEq = (d) => {
     const x = d.data();
     if (x.photoBase64) photoCache["eq:" + d.id] = x.photoBase64;
@@ -186,6 +190,12 @@ async function createLegacyStore() {
   return {
     mode: "legacy",
     readOnly: true,
+    fields: LEGACY_KEYS,
+    maxPhotos: 2,
+    photoLabels: ["Termografía", "Equipo"],
+    subTechnicians(cb) {
+      return fs.onSnapshot(fs.collection(db, "technicians"), (qs) => cb(qs.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name).localeCompare(String(b.name)))), () => cb([]));
+    },
     onAuth(cb) {
       let unsubUser = null;
       const off = au.onAuthStateChanged(auth, (u) => {
@@ -193,6 +203,7 @@ async function createLegacyStore() {
         if (!u || u.isAnonymous) { cb(null); return; }
         unsubUser = fs.onSnapshot(fs.doc(db, "users", u.uid), (snap) => {
           const p = snap.exists() ? snap.data() : {};
+          session = { uid: u.uid };
           cb({ uid: u.uid, email: u.email, name: p.displayName || u.email, role: p.role || "tecnico", orgId: "legacy", orgName: LEGACY_ORG_NAME, inviteCode: "" });
         }, () => cb({ uid: u.uid, email: u.email, name: u.email, role: "tecnico", orgId: "legacy", orgName: LEGACY_ORG_NAME, inviteCode: "" }));
       });
@@ -205,13 +216,34 @@ async function createLegacyStore() {
     sub(col, cb) {
       return fs.onSnapshot(fs.collection(db, col), (qs) => cb(qs.docs.map(MAP[col])), (e) => console.error(col, e));
     },
-    add: ro, update: ro, remove: ro,
+    async add(col, data) {
+      if (col !== "readings") return ro();
+      const v = data.values || {};
+      const n = (k) => toNum(v[k]);
+      const doc = {
+        equipmentId: data.equipmentId, date: data.date, technicianId: data.technicianId || "", technicianName: data.technicianName || data.userName || "",
+        iL1: n("iL1"), iL2: n("iL2"), iL3: n("iL3"),
+        vL1: n("vL1"), vL2: n("vL2"), vL3: n("vL3"),
+        tL1: n("tL1"), tL2: n("tL2"), tL3: n("tL3"), tMax: n("tMax"),
+        tBreaker: n("tBreaker"), tContactor: n("tContactor"),
+        notes: data.notes || "",
+        photoTermoBase64: (data.photoIds && pending[data.photoIds[0]]) || null,
+        photoEquipoBase64: (data.photoIds && pending[data.photoIds[1]]) || null,
+        createdAt: fs.serverTimestamp()
+      };
+      const t = new Promise((_, rej) => setTimeout(() => rej(new Error("La conexión está lenta. La lectura queda en cola y se enviará sola al volver la señal.")), 15000));
+      const ref = fs.doc(fs.collection(db, "readings"));
+      await Promise.race([fs.setDoc(ref, doc), t]);
+      (data.photoIds || []).forEach((id) => delete pending[id]);
+      return ref.id;
+    },
+    update: ro, remove: ro,
     subSettings(cb) {
       return fs.onSnapshot(fs.doc(db, "settings", "thresholds"), (s) => cb(s.exists() ? { thresholds: s.data() } : {}), () => cb({}));
     },
     saveSettings: ro,
-    putPhoto: ro,
-    async getPhoto(id) { return photoCache[id] || null; },
+    async putPhoto(dataUrl) { const id = "tmp:" + Math.random().toString(36).slice(2); pending[id] = dataUrl; return id; },
+    async getPhoto(id) { return photoCache[id] || pending[id] || null; },
     async removePhoto() {},
     subUsers(cb) {
       return fs.onSnapshot(fs.collection(db, "users"), (qs) => cb(qs.docs.map((d) => ({ id: d.id, name: d.data().displayName || d.data().email, email: d.data().email, role: d.data().role || "tecnico" }))), () => cb([]));

@@ -1,24 +1,30 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LEVELS, sanitizeDecimal, localISO, relDays, num } from "../lib/calc.js";
 import { TYPES, TYPE_ORDER, evaluate, requiredDone } from "../lib/templates.js";
 import { compressImage } from "../lib/image.js";
 import { reviewReading, aiReview, analyzePhoto, hasGemini } from "../lib/ai.js";
-import { Icon, Pill, Sheet, useToast, Header, Empty } from "../ui.jsx";
+import { Icon, Pill, Sheet, useToast, Header, Empty, FilterBar, applyFilter, ShowMore } from "../ui.jsx";
+
+// Con la base de la app inicial solo se muestran los puntos que ella guarda.
+function limitTemplate(T, fields) {
+  if (!fields) return T;
+  const sections = T.sections.map((s) => ({ ...s, groups: s.groups.map((g) => ({ ...g, fields: g.fields.filter((f) => fields.includes(f.k)) })).filter((g) => g.fields.length) })).filter((s) => s.groups.length);
+  return { ...T, sections };
+}
 
 /* Paso 1: elegir equipo */
 function Picker({ ctx, onPick }) {
   const { items, data, go } = ctx;
-  const [q, setQ] = useState("");
-  const list = items.filter((i) => !q || i.eq.name.toLowerCase().includes(q.toLowerCase()));
-  const byType = TYPE_ORDER.map((t) => ({ t, list: list.filter((i) => i.eq.type === t) })).filter((g) => g.list.length);
+  const [limit, setLimit] = useState(40);
+  const list = applyFilter(items, ctx.filter).sort((a, b) => a.eq.name.localeCompare(b.eq.name, "es", { numeric: true }));
+  const shown = list.slice(0, limit);
+  const byType = TYPE_ORDER.map((t) => ({ t, list: shown.filter((i) => i.eq.type === t) })).filter((g) => g.list.length);
   return (
     <main className="screen">
       <Header eyebrow="Nueva lectura" title="¿Qué equipo?" />
-      <label className="row card in" style={{ padding: "0 14px", height: 50, animationDelay: "40ms" }}>
-        <Icon n="search" size={18} style={{ color: "var(--muted)" }} />
-        <input className="grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código o nombre" aria-label="Buscar equipo" style={{ background: "none", border: 0, height: 48, outline: "none", fontSize: 16 }} />
-      </label>
-      {!items.length && <Empty icon="box" title="Sin equipos" text="Primero crea un equipo." action={<button className="btn sec press" style={{ height: 42 }} onClick={() => go("equip", { create: true })}>Crear equipo</button>} />}
+      <FilterBar ctx={ctx} count={list.length} />
+      {!items.length && <Empty icon="box" title="Sin equipos" text="Primero crea un equipo." action={!ctx.readOnly && <button className="btn sec press" style={{ height: 42 }} onClick={() => go("equip", { create: true })}>Crear equipo</button>} />}
+      {items.length > 0 && !list.length && <Empty icon="search" title="Sin resultados" text="Cambia la planta, el CCM o la búsqueda." />}
       {byType.map((g, gi) => (
         <section key={g.t} className="in" style={{ animationDelay: 60 + gi * 30 + "ms" }}>
           <h2 className="h2" style={{ margin: "6px 2px 8px" }}>{TYPES[g.t].label.toUpperCase()}</h2>
@@ -29,7 +35,7 @@ function Picker({ ctx, onPick }) {
                 <span style={{ width: 40, height: 40, borderRadius: 12, background: it.T.color, color: "#111214", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon d={it.T.icon} size={19} /></span>
                 <span style={{ minWidth: 0 }}>
                   <span className="ellipsis" style={{ display: "block", fontWeight: 700, fontSize: 14 }}>{it.eq.name}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>{ccm ? ccm.name + " · " : ""}{relDays(it.last && it.last.date)}</span>
+                  <span className="muted ellipsis" style={{ display: "block", fontSize: 12 }}>{it.eq.typeLabel ? it.eq.typeLabel + " · " : ""}{ccm ? ccm.name + " · " : ""}{relDays(it.last && it.last.date)}</span>
                 </span>
                 <span style={{ width: 9, height: 9, borderRadius: 5, background: LEVELS[it.level].color }} aria-label={LEVELS[it.level].label} />
               </button>
@@ -37,6 +43,7 @@ function Picker({ ctx, onPick }) {
           })}
         </section>
       ))}
+      <ShowMore total={list.length} shown={shown.length} onMore={() => setLimit(limit + 60)} />
     </main>
   );
 }
@@ -48,7 +55,20 @@ export default function Reading({ ctx }) {
   const editing = route.editId ? data.readings.find((r) => r.id === route.editId) : null;
   const [eqId, setEqId] = useState(route.eqId || (editing && editing.equipmentId) || null);
   const it = items.find((i) => i.eq.id === eqId);
-  const T = it ? it.T : null;
+  const T = useMemo(() => (it ? limitTemplate(it.T, store.fields) : null), [it, store.fields]);
+  const techs = data.technicians || [];
+  const [techId, setTechId] = useState(() => {
+    const me = String((session && session.name) || "").trim().toLowerCase();
+    const t = techs.find((x) => String(x.name || "").trim().toLowerCase() === me);
+    return t ? t.id : "";
+  });
+  const maxPhotos = store.maxPhotos || 99;
+  useEffect(() => {
+    if (techId || !techs.length) return;
+    const me = String((session && session.name) || "").trim().toLowerCase();
+    const t = techs.find((x) => String(x.name || "").trim().toLowerCase() === me);
+    if (t) setTechId(t.id);
+  }, [techs.length]); // eslint-disable-line
   const [values, setValues] = useState(editing ? { ...editing.values } : {});
   const [sec, setSec] = useState(T ? T.sections[0].id : null);
   const [photos, setPhotos] = useState(editing ? (editing.photoIds || []).map((id) => ({ id })) : []);
@@ -63,7 +83,7 @@ export default function Reading({ ctx }) {
   const prev = useMemo(() => (it ? it.readings.filter((r) => !editing || r.id !== editing.id).slice(-1)[0] : null), [it, editing]);
   const ev = useMemo(() => (it ? evaluate(it.eq.type, values, th, it.eq.plate || {}) : null), [it, values, th]);
 
-  if (!it) return <Picker ctx={ctx} onPick={(id) => { setEqId(id); setSec(items.find((i) => i.eq.id === id).T.sections[0].id); }} />;
+  if (!it) return <Picker ctx={ctx} onPick={(id) => { setEqId(id); setSec(limitTemplate(items.find((i) => i.eq.id === id).T, store.fields).sections[0].id); }} />;
 
   const section = T.sections.find((s) => s.id === sec) || T.sections[0];
   const secIdx = T.sections.indexOf(section);
@@ -83,7 +103,7 @@ export default function Reading({ ctx }) {
 
   const addPhotos = async (files) => {
     for (const f of Array.from(files || [])) {
-      try { const dataUrl = await compressImage(f); setPhotos((p) => [...p, { dataUrl }]); } catch (e) { toast(e.message, "bad"); }
+      try { const dataUrl = await compressImage(f); setPhotos((p) => (p.length >= maxPhotos ? p : [...p, { dataUrl }])); } catch (e) { toast(e.message, "bad"); }
     }
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -98,6 +118,11 @@ export default function Reading({ ctx }) {
 
   const save = async () => {
     if (!filled) return toast("Registra al menos un valor", "warn");
+    if (store.subTechnicians) {
+      if (!requiredDone(it.eq.type, values)) return toast("Completa corriente, tensión y temperatura (L1, L2, L3 y máximo)", "warn");
+      if (techs.length && !techId) return toast("Elige el técnico que tomó los datos", "warn");
+    }
+    const tech = techs.find((x) => x.id === techId);
     setBusy(true);
     try {
       const photoIds = [];
@@ -108,7 +133,7 @@ export default function Reading({ ctx }) {
         await store.update("readings", editing.id, { values: clean, notes: notes.trim(), date, photoIds });
         toast("Lectura actualizada");
       } else {
-        await store.add("readings", { equipmentId: it.eq.id, type: it.eq.type, date, values: clean, notes: notes.trim(), photoIds, userId: session.uid, userName: session.name || session.email });
+        await store.add("readings", { equipmentId: it.eq.id, type: it.eq.type, date, values: clean, notes: notes.trim(), photoIds, userId: session.uid, userName: tech ? tech.name : session.name || session.email, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
         toast(ev.worst && LEVELS[ev.worst].rank >= 3 ? "Guardada · requiere intervención" : "Lectura guardada", ev.worst && LEVELS[ev.worst].rank >= 3 ? "bad" : "ok");
       }
       go("hist", { eqId: it.eq.id, k: Date.now() });
@@ -200,11 +225,16 @@ export default function Reading({ ctx }) {
           <span className="muted" style={{ fontSize: 11 }}>termografía o visual</span>
         </div>
         <div className="row" style={{ gap: 8, overflowX: "auto", paddingBottom: 2 }}>
-          <button className="thumb press" onClick={() => fileRef.current.click()} aria-label="Agregar foto" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1.5px dashed var(--line2)" }}>
-            <Icon n="camera" size={22} />
-          </button>
+          {photos.length < maxPhotos && (
+            <button className="thumb press" onClick={() => fileRef.current.click()} aria-label={store.photoLabels ? "Agregar foto de " + store.photoLabels[photos.length] : "Agregar foto"} style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1.5px dashed var(--line2)", fontSize: 10, fontWeight: 600 }}>
+              <Icon n="camera" size={22} />{store.photoLabels && <span>{store.photoLabels[photos.length]}</span>}
+            </button>
+          )}
           {photos.map((p, k) => (
-            <PhotoThumb key={p.id || k} p={p} store={store} onRemove={() => setPhotos(photos.filter((x) => x !== p))} onAI={hasGemini() ? () => runPhotoAI(p) : null} />
+            <div key={p.id || k} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+              <PhotoThumb p={p} store={store} onRemove={() => setPhotos(photos.filter((x) => x !== p))} onAI={hasGemini() ? () => runPhotoAI(p) : null} />
+              {store.photoLabels && <span className="muted" style={{ fontSize: 10, fontWeight: 600 }}>{store.photoLabels[k]}</span>}
+            </div>
           ))}
         </div>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
@@ -212,6 +242,14 @@ export default function Reading({ ctx }) {
       </section>
 
       <label className="field in"><span>Notas</span><textarea className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Hallazgos, condición de carga, acciones…" /></label>
+      {store.subTechnicians && (
+        <label className="field in"><span>Técnico que toma los datos</span>
+          <select className="select" value={techId} onChange={(e) => setTechId(e.target.value)}>
+            <option value="">Selecciona el técnico</option>
+            {techs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+      )}
       <label className="field in"><span>Fecha y hora (hora local)</span><input className="input" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} /></label>
 
       <div className="row" style={{ gap: 8 }}>

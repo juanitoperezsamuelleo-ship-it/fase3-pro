@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LEVELS, fmt, fmtDate, fmtShort, relDays, num } from "../lib/calc.js";
 import { evaluate } from "../lib/templates.js";
 import { diagnoseItem } from "../lib/ai.js";
-import { Icon, Pill, Sheet, Tabs, useToast, Header, LineChart, Empty, CountUp } from "../ui.jsx";
+import { Icon, Pill, Sheet, Tabs, useToast, Header, LineChart, Empty, CountUp, FilterBar, applyFilter, ShowMore } from "../ui.jsx";
 import { EqRow } from "./Home.jsx";
 import { sortByRisk } from "../lib/analysis.js";
 
@@ -124,14 +124,14 @@ function EquipmentHistory({ ctx, it }) {
   return (
     <main className="screen">
       <Header eyebrow={`${it.T.label}${ccm ? " · " + ccm.name : ""}`} title={it.eq.name.split(" · ")[0]} onBack={() => go("hist")}
-        right={!ctx.readOnly && <button className="icon-btn light press" onClick={() => go("read", { eqId: it.eq.id })} aria-label="Nueva lectura"><Icon n="plus" /></button>} />
+        right={<button className="icon-btn light press" onClick={() => go("read", { eqId: it.eq.id })} aria-label="Nueva lectura"><Icon n="plus" /></button>} />
       <div className="row in" style={{ gap: 8, marginTop: -4 }}>
         <Pill level={it.level} />
         <span className="muted" style={{ fontSize: 13 }}>{it.eq.name.split(" · ").slice(1).join(" · ")}</span>
       </div>
       <Tabs value={tab} onChange={setTab} items={[{ id: "trend", label: "Tendencias" }, { id: "rec", label: "Registros", count: rs.length }, { id: "diag", label: "Diagnóstico", count: diag.length || undefined }]} />
 
-      {!rs.length && <Empty icon="chart" title="Sin lecturas" text="Registra la primera para ver tendencias." action={!ctx.readOnly && <button className="btn sec press" style={{ height: 42 }} onClick={() => go("read", { eqId: it.eq.id })}>Nueva lectura</button>} />}
+      {!rs.length && <Empty icon="chart" title="Sin lecturas" text="Registra la primera para ver tendencias." action={<button className="btn sec press" style={{ height: 42 }} onClick={() => go("read", { eqId: it.eq.id })}>Nueva lectura</button>} />}
 
       <div key={tab} className={"tabpanel" + (dir > 0 ? " from-r" : dir < 0 ? " from-l" : "")} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {tab === "trend" && rs.length > 0 && (
@@ -220,16 +220,21 @@ function EquipmentHistory({ ctx, it }) {
 export default function History({ ctx }) {
   const { route, items, data, go, th } = ctx;
   const it = route.eqId && items.find((i) => i.eq.id === route.eqId);
-  const sorted = useMemo(() => sortByRisk(items).filter((i) => i.readings.length), [items]);
+  const [limit, setLimit] = useState(40);
+  const sorted = useMemo(() => sortByRisk(applyFilter(items, ctx.filter)), [items, ctx.filter]);
   if (it) return <EquipmentHistory ctx={ctx} it={it} />;
-  const recent = data.readings.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 12);
+  const ids = new Set(sorted.map((i) => i.eq.id));
+  const recent = data.readings.filter((r) => ids.has(r.equipmentId)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 12);
   const eqMap = Object.fromEntries(items.map((i) => [i.eq.id, i]));
   return (
     <main className="screen">
       <Header eyebrow={`${data.readings.length} lecturas`} title="Histórico" />
       {!data.readings.length && <Empty icon="chart" title="Aún no hay lecturas" />}
-      {sorted.length > 0 && <h2 className="h2 in" style={{ margin: "4px 2px 0" }}>POR EQUIPO</h2>}
-      <div>{sorted.map((i) => <EqRow key={i.eq.id} it={i} ctx={ctx} th={th} onClick={() => go("hist", { eqId: i.eq.id })} />)}</div>
+      <FilterBar ctx={ctx} count={sorted.length} />
+      {items.length > 0 && !sorted.length && <Empty icon="search" title="Sin resultados" text="Cambia la planta, el CCM o la búsqueda." />}
+      {sorted.length > 0 && <h2 className="h2 in" style={{ margin: "4px 2px 0" }}>POR EQUIPO · PRIMERO LOS QUE REQUIEREN ATENCIÓN</h2>}
+      <div>{sorted.slice(0, limit).map((i) => <EqRow key={i.eq.id} it={i} ctx={ctx} th={th} onClick={() => go("hist", { eqId: i.eq.id })} />)}</div>
+      <ShowMore total={sorted.length} shown={Math.min(limit, sorted.length)} onMore={() => setLimit(limit + 60)} />
       {recent.length > 0 && <h2 className="h2 in" style={{ margin: "8px 2px 0" }}>ÚLTIMAS LECTURAS</h2>}
       <div>
         {recent.map((r) => {
