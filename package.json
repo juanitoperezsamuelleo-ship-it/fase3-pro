@@ -1,0 +1,28 @@
+{
+  "name": "fase3-pro",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "FASE·3 Pro — mantenimiento predictivo eléctrico y termografía (versión multi-empresa)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:demo": "vite build --mode demo",
+    "build:legacy": "vite build --mode legacy",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "firebase": "^10.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "write-excel-file": "^2.0.10"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^0.20.5"
+  }
+}

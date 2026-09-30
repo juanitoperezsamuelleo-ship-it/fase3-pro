@@ -1,0 +1,56 @@
+rules_version = '2';
+// FASE·3 Pro · reglas multi-empresa. Cada empresa solo ve sus propios datos.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function me() { return get(userDoc()).data; }
+    function member(orgId) { return signedIn() && exists(userDoc()) && me().orgId == orgId; }
+    function admin(orgId) { return member(orgId) && me().role == 'admin'; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || member(resource.data.orgId));
+      // Alta: creando empresa (lote con la org) o uniéndose con un código válido
+      allow create: if signedIn() && request.auth.uid == uid && (
+        (request.resource.data.role == 'admin'
+          && getAfter(/databases/$(database)/documents/orgs/$(request.resource.data.orgId)).data.ownerUid == uid)
+        || (request.resource.data.role == 'tecnico'
+          && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.orgId == request.resource.data.orgId)
+      );
+      // El admin cambia roles de su empresa; cada uno puede cambiar su nombre
+      allow update: if (admin(resource.data.orgId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']))
+        || (signedIn() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
+      allow delete: if false;
+    }
+
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && getAfter(/databases/$(database)/documents/orgs/$(request.resource.data.orgId)).data.ownerUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /orgs/{orgId} {
+      allow read: if member(orgId);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid
+        && getAfter(userDoc()).data.orgId == orgId;
+      allow update: if admin(orgId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUid', 'inviteCode', 'plan']);
+      allow delete: if false;
+
+      match /settings/{doc} {
+        allow read: if member(orgId);
+        allow create: if signedIn() && getAfter(userDoc()).data.orgId == orgId;
+        allow update: if admin(orgId);
+      }
+      match /{col}/{id} {
+        allow read: if member(orgId) && col in ['plants', 'ccms', 'equipment', 'readings', 'photos'];
+        allow create: if member(orgId) && col in ['equipment', 'readings', 'photos'];
+        allow create, update, delete: if admin(orgId) && col in ['plants', 'ccms', 'equipment', 'readings', 'photos'];
+        // El técnico puede editar sus propias lecturas y equipos, y borrar fotos
+        allow update: if member(orgId) && col == 'readings' && resource.data.createdBy == request.auth.uid;
+        allow update: if member(orgId) && col == 'equipment';
+        allow delete: if member(orgId) && col == 'photos';
+      }
+    }
+  }
+}
