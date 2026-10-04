@@ -10,6 +10,7 @@ import Equipment from "./screens/Equipment.jsx";
 import History from "./screens/History.jsx";
 import More from "./screens/More.jsx";
 import Assistant from "./screens/Assistant.jsx";
+import PowerQuality from "./screens/PowerQuality.jsx";
 
 const NAV = [
   { id: "home", label: "Inicio", icon: "home" },
@@ -88,7 +89,7 @@ function Intro({ onDone, full }) {
 export default function App() {
   const [store, setStore] = useState(null);
   const [session, setSession] = useState(undefined);
-  const [data, setData] = useState({ plants: [], ccms: [], equipment: [], readings: [], settings: {}, users: [], technicians: [] });
+  const [data, setData] = useState({ pq: [], plants: [], ccms: [], equipment: [], readings: [], settings: {}, users: [], technicians: [] });
   const [filter, setFilter] = useState({ plantId: "", ccmId: "", q: "" });
   const [route, setRoute] = useState({ tab: "home" });
   const [prefs, setP] = useState(getPrefs);
@@ -109,7 +110,7 @@ export default function App() {
   const th = useMemo(() => thresholdsOf(data.settings), [data.settings]);
   const items = useMemo(() => analyze(data.equipment, data.readings, th), [data.equipment, data.readings, th]);
 
-  const ORDER = ["home", "read", "equip", "hist", "more", "ai"];
+  const ORDER = ["home", "read", "equip", "hist", "more", "pq", "ai"];
   const [navDir, setNavDir] = useState(0);
   const go = useCallback((tab, params = {}) => {
     setRoute((r) => { const a = ORDER.indexOf(r.tab), b = ORDER.indexOf(tab); setNavDir(tab === "ai" ? 2 : r.tab === "ai" ? -2 : b > a ? 1 : b < a ? -1 : 0); return { tab, ...params }; }); const s = document.querySelector(".screen"); if (s) s.scrollTop = 0; }, []);
@@ -134,7 +135,7 @@ export default function App() {
   else if (session === undefined || !store) body = <div className="screen" style={{ alignItems: "center", justifyContent: "center" }}><div className="muted">Cargando…</div></div>;
   else if (!session || session.pending || session.error) body = <Auth ctx={ctx} />;
   else {
-    const S = { home: Home, read: Reading, equip: Equipment, hist: History, more: More, ai: Assistant }[route.tab] || Home;
+    const S = { home: Home, read: Reading, equip: Equipment, hist: History, more: More, pq: PowerQuality, ai: Assistant }[route.tab] || Home;
     body = (
       <>
         <S ctx={ctx} key={route.tab + (route.k || "")} />

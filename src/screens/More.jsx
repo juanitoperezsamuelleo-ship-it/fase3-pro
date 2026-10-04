@@ -6,6 +6,8 @@ import { Icon, Header, Field, Stepper, Seg, useToast, Pill, Empty } from "../ui.
 
 const MENU = [
   { id: "account", label: "Cuenta", icon: "user", color: "#F4F2EE" },
+  { id: "addEq", label: "Agregar equipo", icon: "plus", color: "#7FE3C9", go: ["equip", { create: true }] },
+  { id: "fluke", label: "Analizador de redes · Fluke 435", icon: "spark", color: "#FFC857", go: ["pq"] },
   { id: "alerts", label: "Alertas", icon: "bell", color: "#FFB05C" },
   { id: "reports", label: "Informes", icon: "file", color: "#8FD3FF" },
   { id: "ai", label: "IA y voz", icon: "brain", color: "#B9A6FF" },
@@ -256,7 +258,7 @@ export default function More({ ctx }) {
       <Header eyebrow={session.orgName} title="Más" />
       <div className="menu in">
         {visible.map((m) => (
-          <button key={m.id} className="menu-row" onClick={() => setView(m.id)}>
+          <button key={m.id} className="menu-row" onClick={() => (m.go ? ctx.go(...m.go) : setView(m.id))}>
             <span className="ic" style={{ background: m.color }}><Icon n={m.icon} size={18} /></span>
             <span className="grow" style={{ fontWeight: 600 }}>{m.label}</span>
             <Icon n="chev" size={16} style={{ color: "var(--muted)" }} />

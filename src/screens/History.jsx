@@ -205,6 +205,19 @@ function EquipmentHistory({ ctx, it }) {
               {d.rec.length > 0 && <div><div className="h2" style={{ marginBottom: 4 }}>QUÉ HACER</div><ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>{d.rec.map((c) => <li key={c}>{c}</li>)}</ul></div>}
             </section>
           ))}
+          {(ctx.data.pq || []).filter((p) => p.equipmentId === it.eq.id).length > 0 && (
+            <section className="card in" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <b>Calidad de energía · Fluke 435</b>
+              {(ctx.data.pq || []).filter((p) => p.equipmentId === it.eq.id).sort((a, b) => String(b.date).localeCompare(String(a.date))).map((p) => (
+                <button key={p.id} className="okrow" onClick={() => go("pq", { pqId: p.id })}>
+                  <Icon n="spark" size={16} style={{ color: "var(--lilac)" }} />
+                  <span className="grow" style={{ fontSize: 14 }}>{fmtDate(p.date)} · {(p.images || []).length} pantallas</span>
+                  <Icon n="chev" size={15} style={{ color: "var(--muted)" }} />
+                </button>
+              ))}
+            </section>
+          )}
+          <button className="btn sec press" onClick={() => go("pq", { eqId: it.eq.id })}><Icon n="file" size={18} /> Agregar medición del analizador</button>
           <button className="btn sec press" onClick={() => go("ai", { eqId: it.eq.id })} style={{ background: "var(--tint-ai)", color: "var(--lilac)" }}><Icon n="spark" size={18} /> Preguntar al asistente</button>
         </>
       )}

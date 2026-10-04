@@ -12,7 +12,7 @@ export const IS_LEGACY = typeof __LEGACY_BUILD__ !== "undefined" && __LEGACY_BUI
 export const IS_DEMO = !IS_LEGACY && ((typeof __DEMO_BUILD__ !== "undefined" && __DEMO_BUILD__) || !configured);
 export const READ_ONLY = IS_LEGACY;
 
-export const COLS = ["plants", "ccms", "equipment", "readings"];
+export const COLS = ["plants", "ccms", "equipment", "readings", "pq"];
 
 /* ─────────────────────────── MODO DEMO ─────────────────────────── */
 function createDemoStore() {
@@ -22,6 +22,7 @@ function createDemoStore() {
   if (!db) db = buildDemoData();
   const listeners = {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* sin espacio: sigue en memoria */ } };
+  COLS.forEach((c) => { if (!db[c]) db[c] = []; });
   const emit = (name) => (listeners[name] || []).forEach((cb) => cb(name === "settings" ? db.settings : name === "users" ? db.users : [...db[name]]));
   const on = (name, cb) => {
     (listeners[name] = listeners[name] || []).push(cb);
@@ -175,7 +176,7 @@ async function createLegacyStore() {
   const mapEq = (d) => {
     const x = d.data();
     if (x.photoBase64) photoCache["eq:" + d.id] = x.photoBase64;
-    return { id: d.id, name: x.name || "Sin nombre", type: legacyType(x.type), typeLabel: x.type || "", plantId: x.plantId || "", ccmId: x.ccmId || "", plate: {}, photoId: x.photoBase64 ? "eq:" + d.id : null };
+    return { id: d.id, name: x.name || "Sin nombre", type: legacyType(x.type), typeLabel: x.type || "", plantId: x.plantId || "", ccmId: x.ccmId || "", plate: x.plate || {}, photoId: x.photoBase64 ? "eq:" + d.id : null };
   };
   const mapReading = (d) => {
     const x = d.data();
@@ -186,7 +187,14 @@ async function createLegacyStore() {
     if (x.photoEquipoBase64) { photoCache["e:" + d.id] = x.photoEquipoBase64; photoIds.push("e:" + d.id); }
     return { id: d.id, equipmentId: x.equipmentId, date: String(x.date || "").slice(0, 16), values, notes: x.notes || "", photoIds, userId: x.technicianId || "", userName: x.technicianName || "" };
   };
-  const MAP = { plants: (d) => ({ id: d.id, ...d.data() }), ccms: (d) => ({ id: d.id, ...d.data() }), equipment: mapEq, readings: mapReading };
+  const MAP = { plants: (d) => ({ id: d.id, ...d.data() }), ccms: (d) => ({ id: d.id, ...d.data() }), equipment: mapEq, readings: mapReading, pq: (d) => ({ id: d.id, ...d.data() }) };
+  const COLNAME = { pq: "powerQuality" };
+  const eqDoc = (data) => {
+    const doc = { name: data.name, type: data.typeLabel || (data.type === "motor" ? "Motor" : "Tablero / CCM"), plantId: data.plantId || "", ccmId: data.ccmId || "" };
+    if (data.plate && Object.keys(data.plate).length) doc.plate = data.plate;
+    if (data.photoData !== undefined) doc.photoBase64 = data.photoData || null;
+    return doc;
+  };
   return {
     mode: "legacy",
     readOnly: true,
@@ -214,12 +222,14 @@ async function createLegacyStore() {
     async signOut() { await au.signOut(auth); },
     async resetPassword(email) { await au.sendPasswordResetEmail(auth, email); },
     sub(col, cb) {
-      return fs.onSnapshot(fs.collection(db, col), (qs) => cb(qs.docs.map(MAP[col])), (e) => console.error(col, e));
+      return fs.onSnapshot(fs.collection(db, COLNAME[col] || col), (qs) => cb(qs.docs.map(MAP[col])), (e) => { console.warn(col, e.code); if (col === "pq") cb([]); });
     },
     async add(col, data) {
       // Plantas y CCM: mismos campos que guarda la app inicial
       if (col === "plants") { const r = await fs.addDoc(fs.collection(db, "plants"), { name: data.name }); return r.id; }
       if (col === "ccms") { const r = await fs.addDoc(fs.collection(db, "ccms"), { name: data.name, plantId: data.plantId }); return r.id; }
+      if (col === "equipment") { const r = await fs.addDoc(fs.collection(db, "equipment"), eqDoc(data)); return r.id; }
+      if (col === "pq") { const r = await fs.addDoc(fs.collection(db, "powerQuality"), { ...data, createdAt: fs.serverTimestamp(), by: session && session.uid }); return r.id; }
       if (col !== "readings") return ro();
       const v = data.values || {};
       const n = (k) => toNum(v[k]);
@@ -242,6 +252,7 @@ async function createLegacyStore() {
     },
     // Solo el administrador (lo exigen también las reglas de la app inicial)
     async update(col, id, data) {
+      if (col === "equipment") { await fs.updateDoc(fs.doc(db, "equipment", id), eqDoc(data)); return; }
       if (col !== "readings") return ro();
       const v = data.values || {};
       const n = (k) => toNum(v[k]);
@@ -268,8 +279,8 @@ async function createLegacyStore() {
       (data.photoIds || []).forEach((pid) => delete pending[pid]);
     },
     async remove(col, id) {
-      if (!["readings", "plants", "ccms"].includes(col)) return ro();
-      await fs.deleteDoc(fs.doc(db, col, id));
+      if (!["readings", "plants", "ccms", "pq"].includes(col)) return ro();
+      await fs.deleteDoc(fs.doc(db, COLNAME[col] || col, id));
     },
     subSettings(cb) {
       return fs.onSnapshot(fs.doc(db, "settings", "thresholds"), (s) => cb(s.exists() ? { thresholds: s.data() } : {}), () => cb({}));

@@ -226,6 +226,13 @@ export async function askGemini(question, items, th) {
   return gemini([{ text: `${ROLE}\n\nDatos de la planta (JSON):\n${ctx}\n\nPregunta del técnico: ${question}\n\nResponde en máximo 6 frases, sin markdown.` }]);
 }
 
+export async function analyzeFluke(images, item, values, th) {
+  const ctx = item ? JSON.stringify(contextFor([item], th)[0]) : "sin equipo asociado";
+  const parts = images.slice(0, 12).map((u) => imgPart(u));
+  parts.push({ text: `${ROLE}\n\nSon pantallas guardadas de un analizador de calidad de energía Fluke 435-II (osciloscopio, eventos de fluctuación, tendencias, armónicos, potencia, etc.). Equipo: ${ctx}. Valores anotados por el técnico: ${JSON.stringify(values || {})}.\n\nResponde en español, sin markdown, con estas secciones en líneas separadas:\nLECTURAS: tensiones, corrientes, frecuencia y demás valores que se lean en las pantallas.\nHALLAZGOS: desbalances, distorsión de forma de onda o armónicos, caídas/huecos (fecha, fase, nivel y duración), y qué los produce probablemente.\nRIESGOS: qué fallas puede causar en motores, variadores, transformadores o capacitores.\nRECOMENDACIONES: acciones concretas y prioridad.\nSé breve (máximo 14 líneas).` });
+  return gemini(parts);
+}
+
 export async function analyzePhoto(dataUrl, item, th) {
   const ctx = item ? JSON.stringify(contextFor([item], th)[0]) : "sin datos";
   return gemini([imgPart(dataUrl), { text: `${ROLE}\n\nAnaliza esta imagen (puede ser termográfica o visual) del equipo. Contexto: ${ctx}\n\nIndica: 1) qué se observa, 2) posibles fallas, 3) recomendación y prioridad. Máximo 6 frases, sin markdown.` }]);

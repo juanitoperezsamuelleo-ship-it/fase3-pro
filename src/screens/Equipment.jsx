@@ -12,6 +12,17 @@ function EqForm({ ctx, initial, onClose }) {
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const fileRef = useRef();
+  const photoRef = useRef();
+  const legacy = store.mode === "legacy";
+  const [photo, setPhoto] = useState(null); // dataURL actual
+  const [photoChanged, setPhotoChanged] = useState(false);
+  React.useEffect(() => { if (initial && initial.photoId) store.getPhoto(initial.photoId).then((u) => u && setPhoto(u)); }, []); // eslint-disable-line
+  const pickPhoto = async (file) => {
+    if (!file) return;
+    try { const url = await compressImage(file, 1000, 150 * 1024); setPhoto(url); setPhotoChanged(true); } catch (e) { toast(e.message, "bad"); }
+    photoRef.current.value = "";
+  };
+  const typeOptions = legacy ? ["motor", "tablero"] : TYPE_ORDER;
   const T = TYPES[f.type];
   const ccms = data.ccms.filter((c) => !f.plantId || c.plantId === f.plantId);
 
@@ -32,7 +43,12 @@ function EqForm({ ctx, initial, onClose }) {
     if (!f.name.trim()) return toast("Escribe el nombre del equipo", "warn");
     setBusy(true);
     const doc = { name: f.name.trim(), type: f.type, plantId: f.plantId || "", ccmId: f.ccmId || "", plate: Object.fromEntries(Object.entries(f.plate || {}).filter(([k, v]) => v !== "" && T.plate.some((p) => p.k === k))) };
+    if (legacy) doc.typeLabel = initial && initial.type === f.type && initial.typeLabel ? initial.typeLabel : TYPES[f.type].label;
     try {
+      if (photoChanged) {
+        if (legacy) doc.photoData = photo || null;
+        else doc.photoId = photo ? await store.putPhoto(photo) : null;
+      }
       if (initial && initial.id) await store.update("equipment", initial.id, doc);
       else await store.add("equipment", doc);
       toast(initial && initial.id ? "Equipo actualizado" : "Equipo creado");
@@ -54,10 +70,21 @@ function EqForm({ ctx, initial, onClose }) {
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => fromPhoto(e.target.files[0])} />
         </>
       )}
+      <div className="row" style={{ gap: 12 }}>
+        <button className="thumb press" onClick={() => photoRef.current.click()} aria-label={photo ? "Cambiar foto del equipo" : "Agregar foto del equipo"} style={{ width: 88, height: 88, borderRadius: 18, display: "flex", flexDirection: "column", gap: 4, alignItems: "center", justifyContent: "center", color: "var(--muted)", border: photo ? 0 : "1.5px dashed var(--line2)", fontSize: 11, fontWeight: 600 }}>
+          {photo ? <img src={photo} alt="Foto del equipo" /> : <><Icon n="camera" size={24} />Foto</>}
+        </button>
+        <div className="grow" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Foto del equipo</span>
+          <span className="muted" style={{ fontSize: 12 }}>Ayuda a identificarlo en la ruta. Toca para tomarla o elegirla.</span>
+          {photo && <button className="btn ghost press" style={{ height: 30, padding: 0, justifyContent: "flex-start", fontSize: 13, color: "var(--on-bad)" }} onClick={() => { setPhoto(null); setPhotoChanged(true); }}>Quitar foto</button>}
+        </div>
+        <input ref={photoRef} type="file" accept="image/*" hidden onChange={(e) => pickPhoto(e.target.files[0])} />
+      </div>
       <Field label="Nombre (código · descripción)"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="M-114 · Bomba agua fresca" /></Field>
       <div className="field"><span>Tipo de equipo</span>
         <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup">
-          {TYPE_ORDER.map((t) => (
+          {typeOptions.map((t) => (
             <button key={t} role="radio" aria-checked={f.type === t} className="chip press" onClick={() => setF({ ...f, type: t })} style={f.type === t ? { background: TYPES[t].color, color: "#111214" } : null}>
               <span className="row" style={{ gap: 6 }}><Icon d={TYPES[t].icon} size={15} />{TYPES[t].label}</span>
             </button>
@@ -122,7 +149,7 @@ export default function Equipment({ ctx }) {
 
   return (
     <main className="screen">
-      <Header eyebrow={`${items.length} equipos`} title="Equipos" right={!ctx.readOnly && <button className="icon-btn light press" onClick={() => setForm({})} aria-label="Nuevo equipo"><Icon n="plus" /></button>} />
+      <Header eyebrow={`${items.length} equipos`} title="Equipos" right={<button className="icon-btn light press" onClick={() => setForm({})} aria-label="Nuevo equipo"><Icon n="plus" /></button>} />
       <FilterBar ctx={ctx} count={list.length} />
       {types.length > 1 && (
         <div className="row in" style={{ gap: 6, overflowX: "auto", margin: "0 -16px", padding: "0 16px" }}>
@@ -130,7 +157,7 @@ export default function Equipment({ ctx }) {
           {types.map((t) => <button key={t} className="chip press" aria-pressed={type === t} onClick={() => setType(t)}>{TYPES[t].label}</button>)}
         </div>
       )}
-      {!items.length && <Empty icon="box" title="Crea tu primer equipo" text="Cada tipo trae sus propios puntos de medida." action={!ctx.readOnly && <button className="btn sec press" style={{ height: 42 }} onClick={() => setForm({})}>Crear equipo</button>} />}
+      {!items.length && <Empty icon="box" title="Crea tu primer equipo" text="Cada tipo trae sus propios puntos de medida." action={<button className="btn sec press" style={{ height: 42 }} onClick={() => setForm({})}>Crear equipo</button>} />}
       {items.length > 0 && !list.length && <Empty icon="search" title="Sin resultados" text="Cambia la planta, el CCM o la búsqueda." />}
       <div>
         {list.slice(0, limit).map((i, k) => {
@@ -187,12 +214,12 @@ export default function Equipment({ ctx }) {
               <button className="btn press" style={{ flex: 1 }} onClick={() => go("read", { eqId: it.eq.id })}><Icon n="plus" size={18} /> Lectura</button>
               <button className="btn sec press" style={{ flex: 1 }} onClick={() => go("hist", { eqId: it.eq.id })}><Icon n="chart" size={18} /> Histórico</button>
             </div>
-            {ctx.canManage && (
+            {isAdmin && (
               <div className="row" style={{ gap: 8 }}>
                 <button className="btn ghost press" style={{ flex: 1, height: 44 }} onClick={() => { setForm({ ...it.eq }); setSel(null); }}><Icon n="edit" size={17} /> Editar</button>
-                {!confirm
+                {ctx.canManage && (!confirm
                   ? <button className="btn ghost press" style={{ flex: 1, height: 44, color: "var(--on-bad)" }} onClick={() => setConfirm(true)}><Icon n="trash" size={17} /> Eliminar</button>
-                  : <button className="btn danger press fade" style={{ flex: 1, height: 44 }} onClick={del}>Confirmar ({it.readings.length} lecturas)</button>}
+                  : <button className="btn danger press fade" style={{ flex: 1, height: 44 }} onClick={del}>Confirmar ({it.readings.length} lecturas)</button>)}
               </div>
             )}
           </>

@@ -370,3 +370,6 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
 .wavefill { animation: sway 6s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: bottom; }
 @keyframes sway { 0% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(1.5px) scaleY(.985); } 100% { transform: translateY(-1px) scaleY(1.01); } }
 @media (prefers-reduced-motion: reduce) { .wavefill { animation: none; } }
+/* Con una hoja abierta, la barra inferior se oculta para no tapar sus botones */
+.app:has(.sheet) .nav { opacity: 0; pointer-events: none; transform: translateY(20px); transition: opacity .15s ease, transform .2s var(--out); }
+.nav { transition: opacity .2s ease, transform .25s var(--out); }
