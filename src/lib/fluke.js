@@ -54,13 +54,70 @@ export function decodeFlukeScreen(buf) {
   };
 }
 
+/* Grabación de la carpeta DATA/DAT0000n (MEAS.ADM). Fechas: segundos desde 1-ene-2010.
+   Resumen: Hz @100; V L-L (rms, factor de cresta, pico) @104/116/128; I @152/164/176.
+   Eventos: registros de 24 bytes [t u32][u32][f32][f32][nivel f32][f32]. */
+const EPOCH = Date.UTC(2010, 0, 1) / 1000;
+const isoOf = (t) => { const d = new Date((EPOCH + t) * 1000); const p = (n) => String(n).padStart(2, "0"); return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`; };
+export function parseMeasADM(buf) {
+  const dv = new DataView(buf);
+  const u32 = (o) => dv.getUint32(o, true), f32 = (o) => dv.getFloat32(o, true);
+  if (buf.byteLength < 200) throw new Error("MEAS.ADM incompleto.");
+  const end = u32(24), start = u32(52);
+  if (!(start > 3e8 && end >= start && end - start < 400 * 86400)) throw new Error("No se reconoce el formato de MEAS.ADM.");
+  const tri = (o) => [0, 1, 2].map((k) => ({ rms: f32(o + k * 12), cf: f32(o + k * 12 + 4), peak: f32(o + k * 12 + 8) }));
+  const ok = (x) => Number.isFinite(x) && x >= 0 && x < 1e5;
+  const V = tri(104).map((x) => ({ ...x, cf: ok(x.cf) && x.cf < 10 ? x.cf : null }));
+  const I = tri(152).map((x) => ({ ...x, cf: ok(x.cf) && x.cf < 10 ? x.cf : null }));
+  const hz = f32(100);
+  // eventos
+  const recs = [];
+  const lim = Math.min(buf.byteLength - 24, 200000);
+  for (let o = 1000; o < lim; o += 4) {
+    const t = u32(o);
+    if (t < start - 3600 || t > end + 3600) continue;
+    const v = f32(o + 16);
+    if (Number.isFinite(v) && v > 0.05 && v < 700) recs.push({ t, v });
+  }
+  recs.sort((a, b) => a.t - b.t);
+  const events = [];
+  recs.forEach((r) => {
+    const last = events[events.length - 1];
+    if (last && r.t - last.tEnd <= 1) { last.tEnd = r.t; last.min = Math.min(last.min, r.v); last.max = Math.max(last.max, r.v); last.values.push(r.v); }
+    else events.push({ t: r.t, tEnd: r.t, min: r.v, max: r.v, values: [r.v] });
+  });
+  return {
+    start: isoOf(start), end: isoOf(end), hours: (end - start) / 3600,
+    hz: ok(hz) && hz > 40 && hz < 70 ? hz : null,
+    V: V.map((x) => (ok(x.rms) ? x : { rms: null })), I: I.map((x) => (ok(x.rms) ? x : { rms: null })),
+    events: events.filter((e) => !(e.values.length === 1 && e.t >= end - 2)).map((e) => ({ date: isoOf(e.t), min: e.min, max: e.max, values: e.values.slice(0, 12) }))
+  };
+}
+export function classifyEvent(e, nominal = 480) {
+  if (e.min < nominal * 0.05) return { type: "Interrupción", level: "critico" };
+  if (e.min < nominal * 0.7) return { type: "Hueco profundo", level: "mayor" };
+  if (e.min < nominal * 0.9) return { type: "Hueco", level: "precaucion" };
+  if (e.max > nominal * 1.1) return { type: "Sobretensión", level: "precaucion" };
+  return { type: "Variación", level: "baja" };
+}
+
 export async function readPowerFiles(fileList, compress) {
   const out = [];
   const errors = [];
+  const recordings = [];
+  let setupName = "", norm = "";
   for (const f of Array.from(fileList || [])) {
     const name = f.name || "";
     try {
-      if (/\.idx$/i.test(name)) continue; // índices de la memoria: no tienen imagen
+      if (/\.idx$/i.test(name)) continue; // índices de la memoria
+      if (/^setup\.bin$/i.test(name) || /^limits\.bin$/i.test(name)) {
+        const u8 = new Uint8Array(await f.arrayBuffer());
+        const strs = (String.fromCharCode(...u8.slice(0, 400)).match(/[ -~]{4,}/g) || []).map((x) => x.trim());
+        if (/^setup/i.test(name) && strs[0] && !/^MEAS \d+$/.test(strs[0])) setupName = strs[0].replace(/\s+/g, " ");
+        if (/^limits/i.test(name)) norm = strs.find((x) => /EN\s?50160|IEC|IEEE|NTC/i.test(x)) || norm;
+        continue;
+      }
+      if (/\.adm$/i.test(name)) { recordings.push(parseMeasADM(await f.arrayBuffer())); continue; }
       if (/\.int$/i.test(name) || !f.type) {
         const r = decodeFlukeScreen(await f.arrayBuffer());
         out.push({ ...r, name });
@@ -70,7 +127,8 @@ export async function readPowerFiles(fileList, compress) {
     } catch (e) { errors.push(`${name}: ${e.message}`); }
   }
   out.sort((a, b) => (a.screen || a.name).localeCompare(b.screen || b.name, "en", { numeric: true }));
-  return { shots: out, errors };
+  recordings.forEach((r) => { r.name = setupName; r.norm = norm; });
+  return { shots: out, errors, recordings };
 }
 
 /* Evaluación local de valores medidos (opcionales). Criterios:

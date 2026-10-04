@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { LEVELS, fmtDate, localISO, worstOf } from "../lib/calc.js";
-import { readPowerFiles, evaluatePQ } from "../lib/fluke.js";
+import { readPowerFiles, evaluatePQ, classifyEvent } from "../lib/fluke.js";
 import { compressImage } from "../lib/image.js";
 import { analyzeFluke, hasGemini } from "../lib/ai.js";
 import { Icon, Header, Pill, Sheet, useToast, Empty } from "../ui.jsx";
@@ -29,6 +29,7 @@ export default function PowerQuality({ ctx }) {
   const toast = useToast();
   const fileRef = useRef();
   const [shots, setShots] = useState([]);
+  const [recs, setRecs] = useState([]);
   const [eqId, setEqId] = useState(route.eqId || "");
   const [vals, setVals] = useState({});
   const [nomV, setNomV] = useState("480");
@@ -48,11 +49,19 @@ export default function PowerQuality({ ctx }) {
 
   const load = async (files) => {
     setBusy("Leyendo archivos…");
-    const { shots: s, errors } = await readPowerFiles(files, (f) => compressImage(f, 1000, 160 * 1024));
+    const { shots: s, errors, recordings } = await readPowerFiles(files, (f) => compressImage(f, 1000, 160 * 1024));
     setShots((x) => [...x, ...s]);
+    if (recordings.length) {
+      setRecs((x) => [...x, ...recordings]);
+      const r = recordings.find((x) => x.V[0].rms > 50);
+      if (r) {
+        const f2 = (x) => (x == null ? "" : String(Math.round(x * 100) / 100));
+        setVals((v) => ({ ...v, v1: f2(r.V[0].rms), v2: f2(r.V[1].rms), v3: f2(r.V[2].rms), i1: f2(r.I[0].rms), i2: f2(r.I[1].rms), i3: f2(r.I[2].rms), hz: r.hz ? r.hz.toFixed(3) : v.hz }));
+      }
+    }
     if (errors.length) toast(errors[0], "bad");
-    else if (s.length) toast(`${s.length} ${s.length === 1 ? "pantalla leída" : "pantallas leídas"}`);
-    else toast("No había pantallas en esos archivos", "warn");
+    else if (s.length || recordings.length) toast([recordings.length && `${recordings.length} ${recordings.length === 1 ? "grabación" : "grabaciones"}`, s.length && `${s.length} ${s.length === 1 ? "pantalla" : "pantallas"}`].filter(Boolean).join(" y ") + " leídas");
+    else toast("No había datos del Fluke en esos archivos", "warn");
     setBusy("");
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -64,7 +73,7 @@ export default function PowerQuality({ ctx }) {
   };
 
   const save = async () => {
-    if (!shots.length && !rows.length) return toast("Carga pantallas o anota valores", "warn");
+    if (!shots.length && !rows.length && !recs.length) return toast("Carga archivos o anota valores", "warn");
     const images = shots.map((s) => ({ src: s.dataUrl, date: s.date || "", screen: s.screen || s.name || "" }));
     const size = images.reduce((a, b) => a + b.src.length, 0);
     if (size > 900000) return toast("Demasiadas pantallas para un registro; guarda máximo 8", "warn");
@@ -72,13 +81,14 @@ export default function PowerQuality({ ctx }) {
     try {
       const first = shots.find((s) => s.serial) || {};
       const id = await store.add("pq", {
-        equipmentId: eqId || "", date: (shots.find((s) => s.date) || {}).date?.slice(0, 16) || localISO(),
-        images, values: vals, nominalV: parseFloat(nomV) || 480, notes: notes.trim(), ai: ai || "",
+        equipmentId: eqId || "",
+        date: (recs[0] && recs[0].start.slice(0, 16)) || (shots.find((s) => s.date) || {}).date?.slice(0, 16) || localISO(),
+        images, values: vals, recordings: recs.map((r) => ({ ...r, events: r.events.map((e) => ({ date: e.date, min: e.min, max: e.max })) })), nominalV: parseFloat(nomV) || 480, notes: notes.trim(), ai: ai || "",
         instrument: [first.model, first.serial && "S/N " + first.serial, first.firmware].filter(Boolean).join(" · "),
         userName: session.name || session.email
       });
       toast("Registro guardado");
-      setShots([]); setVals({}); setNotes(""); setAi(""); setView(id);
+      setShots([]); setRecs([]); setVals({}); setNotes(""); setAi(""); setView(id);
     } catch (e) {
       toast(/permission|insufficient/i.test(e.message) ? "La base de la app inicial no permite guardar registros del analizador (reglas de Firestore)." : "No se pudo guardar: " + e.message, "bad");
     }
@@ -94,6 +104,7 @@ export default function PowerQuality({ ctx }) {
         <div className="in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {(rec.images || []).map((s, k) => <Shot key={k} s={{ dataUrl: s.src, date: s.date, screen: s.screen }} onOpen={() => setBig(s.src)} />)}
         </div>
+        {(rec.recordings || []).map((r, k) => <RecordingCard key={k} r={r} nominal={rec.nominalV || 480} />)}
         {r2.length > 0 && <EvalCard rows={r2} />}
         {rec.ai && <div className="card in" style={{ background: "var(--tint-ai)", fontSize: 14, whiteSpace: "pre-wrap" }}><b style={{ color: "var(--lilac)" }}>Análisis IA</b>{"\n"}{rec.ai}</div>}
         {rec.notes && <div className="card in" style={{ fontSize: 14 }}><span className="muted" style={{ fontSize: 11, display: "block" }}>NOTAS</span>{rec.notes}</div>}
@@ -106,7 +117,7 @@ export default function PowerQuality({ ctx }) {
   return (
     <main className="screen">
       <Header eyebrow="Calidad de energía" title="Analizador" onBack={() => go("more")} />
-      <p className="muted in" style={{ fontSize: 13, marginTop: -4 }}>Sube los archivos <b>SCREEN0.INT, SCREEN1.INT…</b> de la memoria del Fluke 435-II (o fotos de la pantalla). La app los convierte en imágenes.</p>
+      <p className="muted in" style={{ fontSize: 13, marginTop: -4 }}>Sube los archivos de la memoria del Fluke 435-II: las <b>pantallas</b> (SCREEN0.INT, SCREEN1.INT…) o una <b>grabación</b> completa (todo lo que hay dentro de DATA → DAT0000n: MEAS.ADM, SETUP.BIN, LIMITS.BIN, SCREEN.INT). Selecciónalos todos juntos.</p>
 
       <button className="btn press in" onClick={() => fileRef.current.click()} disabled={!!busy}><Icon n="file" size={18} /> {busy && busy.startsWith("Leyendo") ? busy : "Cargar archivos del Fluke"}</button>
       <input ref={fileRef} type="file" multiple hidden accept=".int,.INT,.idx,.IDX,image/*" onChange={(e) => load(e.target.files)} />
@@ -119,6 +130,8 @@ export default function PowerQuality({ ctx }) {
           {shots[0].serial && <p className="muted mono" style={{ fontSize: 11 }}>{shots[0].model} · S/N {shots[0].serial} · {shots[0].firmware}</p>}
         </>
       )}
+
+      {recs.map((r, k) => <RecordingCard key={k} r={r} nominal={parseFloat(nomV) || 480} onRemove={() => setRecs(recs.filter((x) => x !== r))} />)}
 
       <label className="field in"><span>Equipo o punto medido</span>
         <select className="select" value={eqId} onChange={(e) => setEqId(e.target.value)}>
@@ -192,6 +205,61 @@ function EvalCard({ rows, worst }) {
           {r.note && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{r.note}</div>}
         </div>
       ))}
+    </section>
+  );
+}
+
+function RecordingCard({ r, nominal, onRemove }) {
+  const ev = r.events || [];
+  const t0 = new Date(r.start).getTime(), t1 = new Date(r.end).getTime();
+  const W = 320, H = 110, pl = 30, pr = 8, pt = 8, pb = 18;
+  const Xt = (t) => pl + ((t - t0) / Math.max(1, t1 - t0)) * (W - pl - pr);
+  const X = (iso) => Xt(new Date(iso).getTime());
+  const lo = Math.max(0, Math.min(0.7, ...ev.map((e) => e.min / nominal - 0.05)));
+  const Y = (v) => pt + (1 - (Math.min(1.1, Math.max(lo, v / nominal)) - lo) / (1.1 - lo)) * (H - pt - pb);
+  const days = [];
+  for (let t = new Date(r.start.slice(0, 10) + "T00:00").getTime() + 86400000; t < t1; t += 86400000) days.push(t);
+  const dur = r.hours >= 24 ? `${Math.floor(r.hours / 24)} d ${Math.round(r.hours % 24)} h` : `${r.hours.toFixed(1).replace(".", ",")} h`;
+  const fmtN = (x, d = 1) => (x == null ? "—" : x.toFixed(d).replace(".", ","));
+  const live = r.V[0].rms > nominal * 0.1;
+  return (
+    <section className="card in" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <div className="grow">
+          <div className="eyebrow">Grabación · {r.norm || "Fluke 435-II"}</div>
+          <div className="display" style={{ fontSize: 18, fontWeight: 600 }}>{r.name || "Medición del analizador"}</div>
+          <div className="muted" style={{ fontSize: 12 }}>{fmtDate(r.start)} → {fmtDate(r.end)} · {dur}</div>
+        </div>
+        {onRemove && <button className="icon-btn press" style={{ width: 34, height: 34 }} onClick={onRemove} aria-label="Quitar grabación"><Icon n="close" size={14} /></button>}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Eventos de tensión en el periodo">
+        {[1, 0.9, 0.7].filter((k) => k >= lo).map((k) => <g key={k}><line x1={pl} x2={W - pr} y1={Y(nominal * k)} y2={Y(nominal * k)} style={{ stroke: k === 1 ? "var(--line2)" : "var(--line)" }} strokeDasharray={k === 1 ? "" : "3 3"} /><text x={pl - 4} y={Y(nominal * k) + 3} textAnchor="end" fontSize="8" style={{ fill: "var(--muted)" }}>{Math.round(k * 100)}%</text></g>)}
+        {days.map((t) => <g key={t}><line x1={Xt(t)} x2={Xt(t)} y1={pt} y2={H - pb} style={{ stroke: "var(--line)" }} /><text x={Xt(t)} y={H - 5} textAnchor="middle" fontSize="8" style={{ fill: "var(--muted)" }}>{new Date(t).getDate()}</text></g>)}
+        {ev.map((e, k) => { const c = classifyEvent(e, nominal); return (
+          <g key={k} className="dot" style={{ animationDelay: 200 + k * 80 + "ms" }}>
+            <line x1={X(e.date)} x2={X(e.date)} y1={Y(nominal)} y2={Y(e.min)} stroke={LEVELS[c.level].color} strokeWidth="2" />
+            <circle cx={X(e.date)} cy={Y(e.min)} r="3.5" fill={LEVELS[c.level].color} />
+          </g>); })}
+      </svg>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6 }}>
+        {[["V12", r.V[0]], ["V23", r.V[1]], ["V31", r.V[2]], ["I1", r.I[0]], ["I2", r.I[1]], ["I3", r.I[2]]].map(([t, x]) => (
+          <div key={t} className="card" style={{ background: "var(--s2)", padding: "6px 10px" }}>
+            <div className="muted" style={{ fontSize: 10, fontWeight: 700 }}>{t}{x.cf ? " · FC " + fmtN(x.cf, 2) : ""}</div>
+            <div className="mono" style={{ fontWeight: 600 }}>{fmtN(x.rms)} <span className="muted" style={{ fontSize: 10 }}>{t[0] === "V" ? "V" : "A"}</span></div>
+          </div>
+        ))}
+      </div>
+      <p className="muted" style={{ fontSize: 11 }}>Valores al cerrar la grabación{r.hz ? ` · ${fmtN(r.hz, 3)} Hz` : ""}.{!live ? " La tensión estaba en 0: la grabación terminó con el circuito desenergizado." : ""}{r.I.some((x) => x.cf > 1.5) ? " Factor de cresta de corriente mayor a 1,5: corriente distorsionada (cargas no lineales como variadores)." : ""}</p>
+      <div>
+        <h2 className="h2" style={{ marginBottom: 4 }}>EVENTOS · {ev.length}</h2>
+        {!ev.length && <p className="muted" style={{ fontSize: 13 }}>Sin eventos registrados.</p>}
+        {ev.map((e, k) => { const c = classifyEvent(e, nominal); return (
+          <div key={k} className="row" style={{ minHeight: 34, borderTop: "1px solid var(--s2)", fontSize: 13 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 4, background: LEVELS[c.level].color }} />
+            <span className="grow">{fmtDate(e.date)}<span className="muted"> · {c.type}</span></span>
+            <span className="mono" style={{ fontWeight: 600 }}>{fmtN(e.min)} V</span>
+          </div>); })}
+      </div>
     </section>
   );
 }
