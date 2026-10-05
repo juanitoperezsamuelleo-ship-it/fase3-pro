@@ -254,6 +254,11 @@ export async function analyzeFluke(images, item, values, th) {
   return gemini(parts);
 }
 
+export async function askWithImage(dataUrl, question, item, th) {
+  const ctx = item ? JSON.stringify(contextFor([item], th)[0]) : "sin equipo seleccionado";
+  return gemini([imgPart(dataUrl), { text: `${ROLE}\n\nEl técnico envía esta foto desde planta (puede ser un equipo, una placa de datos, un componente, un tablero, una termografía, una pantalla de instrumento o un daño). Contexto del equipo: ${ctx}.\n\nPregunta: ${question || "¿Qué es esto y qué observas?"}\n\nResponde en español, sin markdown y en máximo 8 frases: 1) qué es (tipo de equipo/componente, marca/modelo y datos de placa si se leen), 2) estado o anomalías visibles (calentamiento, quemaduras, corrosión, fugas, conexiones flojas, abombamiento…), 3) qué revisar o hacer. Si algo no se ve con claridad, dilo.` }]);
+}
+
 export async function analyzePhoto(dataUrl, item, th) {
   const ctx = item ? JSON.stringify(contextFor([item], th)[0]) : "sin datos";
   return gemini([imgPart(dataUrl), { text: `${ROLE}\n\nAnaliza esta imagen (puede ser termográfica o visual) del equipo. Contexto: ${ctx}\n\nIndica: 1) qué se observa, 2) posibles fallas, 3) recomendación y prioridad. Máximo 6 frases, sin markdown.` }]);

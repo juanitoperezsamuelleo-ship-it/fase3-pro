@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { daySummary, localAnswer, askGemini, hasGemini, speak, listen, canListen, diagnoseItem } from "../lib/ai.js";
+import { daySummary, localAnswer, askGemini, askWithImage, hasGemini, speak, listen, canListen, diagnoseItem } from "../lib/ai.js";
+import { compressImage } from "../lib/image.js";
 import { LEVELS } from "../lib/calc.js";
 import { Icon } from "../ui.jsx";
 
@@ -65,12 +66,30 @@ export default function Assistant({ ctx }) {
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
   useEffect(() => () => { window.speechSynthesis && window.speechSynthesis.cancel(); recRef.current && recRef.current.abort && recRef.current.abort(); }, []);
 
+  const [img, setImg] = useState(null);
+  const fileRef = useRef();
+  const pick = async (f) => {
+    if (!f) return;
+    try { setImg(await compressImage(f, 1400, 350 * 1024)); } catch (e) { /* */ }
+    if (fileRef.current) fileRef.current.value = "";
+  };
   const ask = async (text) => {
     const question = (text || q).trim();
-    if (!question) return;
+    if (!question && !img) return;
     setQ("");
-    setMsgs((m) => [...m, { text: question }]);
+    const photo = img;
+    setImg(null);
+    setMsgs((m) => [...m, { text: question || "¿Qué es esto?", img: photo }]);
     setState("think");
+    if (photo) {
+      let answer;
+      if (!hasGemini()) answer = "Para analizar fotos necesito la IA de Gemini. Conéctala en Más → IA y voz.";
+      else { try { answer = await askWithImage(photo, question, eqIt, th); } catch (e) { answer = "No pude analizar la foto: " + e.message; } }
+      setMsgs((m) => [...m, { ai: true, text: answer }]);
+      setState("speak"); speak(answer);
+      setTimeout(() => setState("idle"), Math.min(9000, 1200 + answer.length * 45));
+      return;
+    }
     const scoped = eqIt && !/resumen|todos|planta|prioridad/i.test(question) ? `${question} (sobre ${eqIt.eq.name.split(" · ")[0]})` : question;
     let answer;
     if (hasGemini()) {
@@ -106,15 +125,24 @@ export default function Assistant({ ctx }) {
       <p className="display" style={{ textAlign: "center", fontSize: 18, marginTop: -4 }}>{state === "listen" ? "Te escucho…" : state === "think" ? "Pensando…" : eqIt ? eqIt.eq.name.split(" · ")[0] : "Asistente"}</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }} aria-live="polite">
-        {msgs.map((m, k) => <div key={k} className={"bubble in " + (m.ai ? "ai" : "me")}>{m.text}</div>)}
+        {msgs.map((m, k) => <div key={k} className={"bubble in " + (m.ai ? "ai" : "me")} style={{ whiteSpace: "pre-wrap" }}>{m.img && <img src={m.img} alt="" style={{ display: "block", width: "100%", maxWidth: 220, borderRadius: 12, marginBottom: 6 }} />}{m.text}</div>)}
         <div ref={endRef} />
       </div>
 
       <div className="row" style={{ gap: 6, overflowX: "auto", margin: "0 -16px", padding: "0 16px", flexShrink: 0 }}>
         {SUG.map((s) => <button key={s} className="chip press" onClick={() => ask(s)}>{s}</button>)}
       </div>
+      {img && (
+        <div className="row fade" style={{ gap: 10, flexShrink: 0 }}>
+          <img src={img} alt="Foto adjunta" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 12 }} />
+          <span className="grow muted" style={{ fontSize: 13 }}>Foto lista. Escribe una pregunta o toca enviar.</span>
+          <button className="icon-btn press" onClick={() => setImg(null)} aria-label="Quitar foto"><Icon n="close" size={15} /></button>
+        </div>
+      )}
       <form className="row" style={{ gap: 6, flexShrink: 0 }} onSubmit={(e) => { e.preventDefault(); ask(); }}>
-        <input className="input grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pregunta sobre tus equipos" aria-label="Pregunta" />
+        <button type="button" className="icon-btn press" style={{ width: 50, height: 50 }} onClick={() => fileRef.current.click()} aria-label="Adjuntar foto"><Icon n="camera" /></button>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files[0])} />
+        <input className="input grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder={img ? "¿Qué quieres saber de la foto?" : "Pregunta o envía una foto"} aria-label="Pregunta" style={{ minWidth: 0 }} />
         {canListen() && <button type="button" className="icon-btn press" onClick={mic} aria-label={state === "listen" ? "Detener" : "Hablar"} style={{ width: 50, height: 50, background: state === "listen" ? "var(--lilac)" : undefined, color: state === "listen" ? "#111214" : undefined }}><Icon n="mic" /></button>}
         <button className="icon-btn light press" style={{ width: 50, height: 50 }} aria-label="Enviar"><Icon n="send" size={18} /></button>
       </form>
