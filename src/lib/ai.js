@@ -168,40 +168,61 @@ export const hasGemini = () => !!getAIConfig().apiKey;
 
 /* Elige solo el mejor modelo "flash" disponible para esa clave (Google cambia
    los nombres de modelos con el tiempo; así la app no se queda desactualizada). */
-export async function pickModel(apiKey) {
+/* Lista de modelos "flash" disponibles para esa clave, del más nuevo al más antiguo
+   (incluye los "lite", más livianos y con menos demanda). Google cambia los nombres
+   con el tiempo; así la app no se queda desactualizada. */
+let modelCache = null;
+export async function listModels(apiKey) {
+  if (modelCache && modelCache.key === apiKey) return modelCache.list;
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((d.error && d.error.message) || `Google respondió ${r.status}`);
-  const ok = (d.models || [])
+  if (!r.ok) throw new Error(/API key/i.test((d.error && d.error.message) || "") ? "La clave no es válida. Revísala en Más → IA y voz." : (d.error && d.error.message) || `Google respondió ${r.status}`);
+  const names = (d.models || [])
     .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
     .map((m) => m.name.replace("models/", ""))
-    .filter((n) => /^gemini-[\d.]+-flash(-latest)?$/.test(n) || n === "gemini-flash-latest");
-  if (!ok.length) throw new Error("Tu clave no tiene modelos Flash disponibles.");
-  const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [0, 0])[1]);
-  ok.sort((a, b) => ver(b) - ver(a) || (a.includes("latest") ? 1 : -1));
-  return ok[0];
+    .filter((n) => /^gemini-[\d.]+-flash(-lite)?(-latest)?$/.test(n) || /^gemini-flash(-lite)?-latest$/.test(n));
+  if (!names.length) throw new Error("Tu clave no tiene modelos Flash disponibles.");
+  const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [0, 99])[1]);
+  names.sort((a, b) => (a.includes("lite") ? 1 : 0) - (b.includes("lite") ? 1 : 0) || ver(b) - ver(a));
+  modelCache = { key: apiKey, list: names };
+  return names;
 }
+export async function pickModel(apiKey) { return (await listModels(apiKey))[0]; }
 
-async function gemini(parts, { json = false } = {}, retried = false) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function gemini(parts, { json = false } = {}) {
   const cfg = getAIConfig();
   const { apiKey } = cfg;
   if (!apiKey) throw new Error("Falta la clave de Gemini (Más → IA y voz).");
-  let model = cfg.model;
-  if (!model) { model = await pickModel(apiKey); setAIConfig({ ...getAIConfig(), model }); }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0.3, ...(json ? { responseMimeType: "application/json" } : {}) } })
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    if (res.status === 404 && !retried) { setAIConfig({ ...getAIConfig(), model: "" }); return gemini(parts, { json }, true); }
-    if (res.status === 429) throw new Error("Se alcanzó el límite gratuito por ahora. Intenta en unos minutos.");
-    if (res.status === 400 && /API key/i.test((e.error && e.error.message) || "")) throw new Error("La clave no es válida. Revísala en Más → IA y voz.");
-    throw new Error((e.error && e.error.message) || `Gemini respondió ${res.status}`);
+  const all = await listModels(apiKey);
+  const order = cfg.model && all.includes(cfg.model) ? [cfg.model, ...all.filter((m) => m !== cfg.model)] : all;
+  let lastErr = "";
+  for (let i = 0; i < Math.min(order.length, 5); i++) {
+    const model = order[i];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0.3, ...(json ? { responseMimeType: "application/json" } : {}) } })
+      }).catch(() => null);
+      if (!res) { lastErr = "Sin conexión a internet."; break; }
+      if (res.ok) {
+        if (cfg.model !== model) setAIConfig({ ...getAIConfig(), model });
+        const data = await res.json();
+        return ((data.candidates || [])[0]?.content?.parts || []).map((p) => p.text || "").join("");
+      }
+      const e = await res.json().catch(() => ({}));
+      const msg = (e.error && e.error.message) || `Gemini respondió ${res.status}`;
+      if (res.status === 400 && /API key/i.test(msg)) throw new Error("La clave no es válida. Revísala en Más → IA y voz.");
+      lastErr = msg;
+      // 503 saturado / 500: esperar un poco y reintentar; luego probar otro modelo
+      if ((res.status === 503 || res.status === 500) && attempt === 0) { await sleep(1500); continue; }
+      break; // 404, 429 o segundo fallo → siguiente modelo
+    }
   }
-  const data = await res.json();
-  return ((data.candidates || [])[0]?.content?.parts || []).map((p) => p.text || "").join("");
+  if (/quota|rate|429|exhausted/i.test(lastErr)) throw new Error("Se alcanzó el límite gratuito por ahora. Intenta en unos minutos.");
+  if (/high demand|overloaded|unavailable|503/i.test(lastErr)) throw new Error("Los modelos gratuitos de Google están saturados en este momento. Intenta de nuevo en unos minutos.");
+  throw new Error(lastErr || "No se pudo consultar la IA.");
 }
 const imgPart = (dataUrl) => ({ inlineData: { mimeType: dataUrl.slice(5, dataUrl.indexOf(";")), data: dataUrl.split(",")[1] } });
 
