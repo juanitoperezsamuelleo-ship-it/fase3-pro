@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { DEFAULT_THRESHOLDS, LEVELS, localDay } from "../lib/calc.js";
-import { htmlReport, openHtml, excelReport } from "../lib/reports.js";
+import { htmlReport, openHtml, excelReport, scopeData } from "../lib/reports.js";
 import { getAIConfig, setAIConfig, speak, testGemini } from "../lib/ai.js";
 import { Icon, Header, Field, Stepper, Seg, useToast, Pill, Empty } from "../ui.jsx";
 
@@ -60,32 +60,50 @@ function Reports({ ctx }) {
   const d = new Date();
   const [from, setFrom] = useState(localDay(new Date(d.getFullYear(), d.getMonth(), 1)));
   const [to, setTo] = useState(localDay());
-  const [plant, setPlant] = useState("");
+  const [kind, setKind] = useState("all");
+  const [plantId, setPlantId] = useState("");
+  const [ccmId, setCcmId] = useState("");
+  const [eqId, setEqId] = useState("");
   const [busy, setBusy] = useState(false);
-  const scoped = plant ? items.filter((i) => i.eq.plantId === plant) : items;
-  const ids = new Set(scoped.map((i) => i.eq.id));
-  const rs = data.readings.filter((r) => ids.has(r.equipmentId));
-  const n = rs.filter((r) => r.date.slice(0, 10) >= from && r.date.slice(0, 10) <= to).length;
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name), "es", { numeric: true });
+  const ccmList = data.ccms.filter((c) => !plantId || c.plantId === plantId).sort(byName);
+  const eqList = items.filter((i) => (!plantId || i.eq.plantId === plantId) && (!ccmId || i.eq.ccmId === ccmId)).map((i) => i.eq).sort(byName);
+  const scope = { kind, plantId, ccmId, eqId };
+  const ready = kind === "all" || (kind === "ccm" && ccmId) || (kind === "eq" && eqId);
+  const { list, readings: rs } = useMemo(() => (ready ? scopeData({ items, readings: data.readings, from, to, th, scope }) : { list: [], readings: [] }), [items, data.readings, from, to, th, kind, plantId, ccmId, eqId]); // eslint-disable-line
+  const n = rs.length;
   const quick = (days) => { const a = new Date(); a.setDate(a.getDate() - days); setFrom(localDay(a)); setTo(localDay()); };
+  const args = { orgName: session.orgName, items, readings: data.readings, from, to, th, scope, ccms: data.ccms, plants: data.plants };
   return (
     <>
+      <div className="field"><span>Alcance del informe</span>
+        <Seg options={[{ v: "all", l: "General" }, { v: "ccm", l: "Por CCM" }, { v: "eq", l: "Por equipo" }]} value={kind} onChange={(v) => { setKind(v); }} />
+      </div>
+      {data.plants.length > 1 && <Field label="Planta"><select className="select" value={plantId} onChange={(e) => { setPlantId(e.target.value); setCcmId(""); setEqId(""); }}><option value="">Todas las plantas</option>{data.plants.slice().sort(byName).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>}
+      {kind !== "all" && <Field label={kind === "ccm" ? "CCM / ubicación" : "CCM (para filtrar equipos)"}><select className="select" value={ccmId} onChange={(e) => { setCcmId(e.target.value); setEqId(""); }}><option value="">{kind === "ccm" ? "Elige el CCM" : "Todos los CCM"}</option>{ccmList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
+      {kind === "eq" && <Field label="Equipo"><select className="select" value={eqId} onChange={(e) => setEqId(e.target.value)}><option value="">Elige el equipo</option>{eqList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>}
       <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
         <button className="chip press" onClick={() => quick(7)}>7 días</button>
         <button className="chip press" onClick={() => quick(30)}>30 días</button>
         <button className="chip press" onClick={() => quick(90)}>Trimestre</button>
         <button className="chip press" onClick={() => quick(365)}>Año</button>
+        <button className="chip press" onClick={() => { setFrom("2000-01-01"); setTo(localDay()); }}>Todo</button>
       </div>
       <div className="row" style={{ gap: 8 }}>
         <Field label="Desde"><input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
         <Field label="Hasta"><input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
       </div>
-      {data.plants.length > 1 && <Field label="Planta"><select className="select" value={plant} onChange={(e) => setPlant(e.target.value)}><option value="">Todas</option>{data.plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>}
-      <div className="card" style={{ fontSize: 14 }}><span className="mono" style={{ fontWeight: 700 }}>{n}</span> lecturas en el rango</div>
-      <button className="btn press" disabled={!n} aria-disabled={!n} onClick={() => openHtml(htmlReport({ orgName: session.orgName, items: scoped, readings: rs, from, to, th, plantName: (data.plants.find((p) => p.id === plant) || {}).name }))}><Icon n="file" size={18} /> Informe (PDF)</button>
-      <button className="btn sec press" disabled={!n || busy} aria-disabled={!n || busy} onClick={async () => { setBusy(true); try { await excelReport({ items: scoped, readings: rs, from, to, th, orgName: session.orgName }); toast("Excel descargado"); } catch (e) { toast("Error: " + e.message, "bad"); } setBusy(false); }}>
-        {busy ? "Generando…" : "Exportar Excel"}
+      <div className="card" style={{ fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <span><span className="mono" style={{ fontWeight: 700 }}>{n}</span> lecturas</span>
+        <span><span className="mono" style={{ fontWeight: 700 }}>{list.length}</span> equipos</span>
+        <span><span className="mono" style={{ fontWeight: 700, color: "var(--crit)" }}>{list.filter((i) => i.rank >= 2).length}</span> con hallazgos</span>
+      </div>
+      <button className="btn press" disabled={!n} aria-disabled={!n} onClick={() => openHtml(htmlReport(args))}><Icon n="file" size={18} /> Informe PDF · tendencias y recomendaciones</button>
+      <button className="btn sec press" disabled={!n || busy} aria-disabled={!n || busy} onClick={async () => { setBusy(true); try { await excelReport(args); toast("Excel descargado"); } catch (e) { toast("Error: " + e.message, "bad"); } setBusy(false); }}>
+        {busy ? "Generando…" : "Excel para Power BI"}
       </button>
-      <p className="muted" style={{ fontSize: 12 }}>El informe se abre en una pestaña nueva: usa “Guardar PDF / Imprimir”. Incluye evaluación, diagnóstico y acciones por equipo.</p>
+      <p className="muted" style={{ fontSize: 12 }}>El PDF se abre en una pestaña nueva: toca “Guardar PDF / Imprimir”. Incluye prioridades, gráficas de tendencia por equipo, diagnóstico, recomendaciones con plazo y el detalle de lecturas, agrupado por CCM.</p>
+      <p className="muted" style={{ fontSize: 12 }}>El Excel trae 5 hojas listas para Power BI: Lecturas, Mediciones (formato largo), Equipos, Hallazgos y Umbrales, relacionadas por ID_Equipo e ID_Lectura.</p>
     </>
   );
 }
