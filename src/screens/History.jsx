@@ -168,6 +168,18 @@ function EquipmentHistory({ ctx, it }) {
               <Legend items={[{ n: "L1", c: PH.L1 }, { n: "L2", c: PH.L2 }, { n: "L3", c: PH.L3 }]} />
             </ChartCard>
           )}
+          {(() => {
+            const AUX = [{ k: "tBreaker", n: "Breaker", c: "#C08BFF" }, { k: "tContactor", n: "Contactor", c: "#3FD0B6" }, { k: "tBar", n: "Barras", c: "#FFB05C" }].filter((a) => V(a.k).some((x) => x !== null));
+            if (!AUX.length) return null;
+            const ref = V("tMax");
+            return (
+              <ChartCard title="BREAKER Y CONTACTOR · °C" delay={580} sub={<span className="muted" style={{ fontSize: 11 }}>solo referencia</span>}>
+                <LineChart delay={580} labels={labels} series={[...AUX.map((a) => ({ name: a.n, color: a.c, values: V(a.k) })), ...(ref.some((x) => x !== null) ? [{ name: "Máx bornes", color: "var(--muted)", values: ref }] : [])]} />
+                <Legend items={[...AUX.map((a) => ({ n: a.n, c: a.c })), ...(ref.some((x) => x !== null) ? [{ n: "Máx bornes", c: "var(--muted)" }] : [])]} />
+                {AUX.map((a) => { const v = V(a.k).filter((x) => x !== null); if (v.length < 2) return null; const d = v[v.length - 1] - v[0]; return <p key={a.k} className="muted" style={{ fontSize: 12, marginTop: 4 }}>{a.n}: {fmt(v[0])} → {fmt(v[v.length - 1])} °C ({d >= 0 ? "+" : ""}{fmt(d)} °C){d > 10 ? " · subida importante, revisar conexiones y ajuste" : ""}</p>; })}
+              </ChartCard>
+            );
+          })()}
           <ChartCard title="DESBALANCE · %" delay={640}>
             <LineChart delay={640} labels={labels} series={[{ name: "Corriente", color: "var(--lilac)", values: it.series.map((s) => s.dI) }, ...(E.voltage ? [{ name: "Tensión", color: "var(--sky)", values: it.series.map((s) => s.dV) }] : [])]} />
             <Legend items={[{ n: "Corriente", c: "var(--lilac)" }, ...(E.voltage ? [{ n: "Tensión", c: "var(--sky)" }] : [])]} />

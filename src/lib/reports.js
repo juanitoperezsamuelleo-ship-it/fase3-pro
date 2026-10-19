@@ -107,6 +107,10 @@ export function htmlReport({ orgName, items, readings, from, to, th, scope, ccms
         svgChart({ title: "ΔT entre fases", unit: "°C", labels, series: [{ name: "ΔT", color: "#e0682c", values: i.series.map((s) => s.dT) }], bands: [{ y: th.deltaTMedia, color: "#b86a00", label: "probable" }, { y: th.deltaTMayor, color: "#c2410c", label: "mayor" }] }),
         svgChart({ title: "Temperatura por fase", unit: "°C", labels, series: [...["tL1", "tL2", "tL3"].map((k, n) => ({ name: "L" + (n + 1), color: PH[n], values: V(k) })), { name: "Máx", color: MAXC, values: V("tMax") }] }),
         E.current ? svgChart({ title: "Corriente por fase", unit: "A", labels, series: E.current.map((k, n) => ({ name: "L" + (n + 1), color: PH[n], values: V(k) })), bands: num((i.eq.plate || {}).in) ? [{ y: num(i.eq.plate.in), color: "#888", label: "nominal" }] : [] }) : "",
+        (() => {
+          const AUX = [{ k: "tBreaker", n: "Breaker", c: "#8b5cf6" }, { k: "tContactor", n: "Contactor", c: "#0d9488" }, { k: "tBar", n: "Barras", c: "#d97706" }].filter((a) => V(a.k).some((x) => x !== null));
+          return AUX.length ? svgChart({ title: "Breaker y contactor (referencia)", unit: "°C", labels, series: [...AUX.map((a) => ({ name: a.n, color: a.c, values: V(a.k) })), { name: "Máx", color: "#999", values: V("tMax") }] }) : "";
+        })(),
         svgChart({ title: "Desbalance", unit: "%", labels, series: [{ name: "Corriente", color: "#7c5cff", values: i.series.map((s) => s.dI) }, ...(E.voltage ? [{ name: "Tensión", color: "#1b9bd1", values: i.series.map((s) => s.dV) }] : [])] })
       ].filter(Boolean) : [];
       const trendTxt = [];
