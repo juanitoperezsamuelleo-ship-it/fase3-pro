@@ -76,6 +76,7 @@ export default function Reading({ ctx }) {
   const [photos, setPhotos] = useState(editing ? (editing.photoIds || []).map((id) => ({ id })) : []);
   const [notes, setNotes] = useState(editing ? editing.notes || "" : "");
   const [date, setDate] = useState(editing ? editing.date : localISO());
+  const [dateTouched, setDateTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState(null);
   const [photoAI, setPhotoAI] = useState(null);
@@ -126,16 +127,18 @@ export default function Reading({ ctx }) {
     }
     const tech = techs.find((x) => x.id === techId);
     setBusy(true);
+    // Lectura nueva: fecha y hora del dispositivo en el momento de guardar, salvo que el técnico la haya cambiado a mano
+    const when = editing || dateTouched ? date : localISO();
     try {
       const photoIds = [];
       for (const p of photos) photoIds.push(p.id || (await store.putPhoto(p.dataUrl)));
       const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined && v !== "-"));
       if (editing) {
         (editing.photoIds || []).filter((id) => !photoIds.includes(id)).forEach((id) => store.removePhoto(id));
-        await store.update("readings", editing.id, { values: clean, notes: notes.trim(), date, photoIds, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
+        await store.update("readings", editing.id, { values: clean, notes: notes.trim(), date: when, photoIds, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
         toast("Lectura actualizada");
       } else {
-        await store.add("readings", { equipmentId: it.eq.id, type: it.eq.type, date, values: clean, notes: notes.trim(), photoIds, userId: session.uid, userName: tech ? tech.name : session.name || session.email, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
+        await store.add("readings", { equipmentId: it.eq.id, type: it.eq.type, date: when, values: clean, notes: notes.trim(), photoIds, userId: session.uid, userName: tech ? tech.name : session.name || session.email, technicianId: tech ? tech.id : "", technicianName: tech ? tech.name : "" });
         toast(ev.worst && LEVELS[ev.worst].rank >= 3 ? "Guardada · requiere intervención" : "Lectura guardada", ev.worst && LEVELS[ev.worst].rank >= 3 ? "bad" : "ok");
       }
       go("hist", { eqId: it.eq.id, k: Date.now() });
@@ -254,7 +257,7 @@ export default function Reading({ ctx }) {
       </section>
 
       <label className="field in"><span>Notas</span><textarea className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Hallazgos, condición de carga, acciones…" /></label>
-      <label className="field in"><span>Fecha y hora (hora local)</span><input className="input" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+      <label className="field in"><span>{editing ? "Fecha y hora" : dateTouched ? "Fecha y hora (cambiada a mano)" : "Fecha y hora · se toma del dispositivo al guardar"}</span><input className="input" type="datetime-local" value={date} onChange={(e) => { setDate(e.target.value); setDateTouched(true); }} /></label>
 
       <div className="row" style={{ gap: 8 }}>
         <button className="btn sec press" style={{ flex: 1 }} onClick={doReview}><Icon n="spark" size={18} /> Revisar</button>

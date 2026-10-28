@@ -1,52 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
 import { daySummary, localAnswer, askGemini, askWithImage, hasGemini, speak, listen, canListen, diagnoseItem } from "../lib/ai.js";
 import { compressImage } from "../lib/image.js";
-import { LEVELS } from "../lib/calc.js";
-import { Icon } from "../ui.jsx";
+import { LEVELS, fmt, fmtShort } from "../lib/calc.js";
+import { Icon, Chispa, Pill, LineChart } from "../ui.jsx";
 
-/* Orbe de partículas: gira lento en reposo, se agita al escuchar o pensar. */
-function Orb({ state }) {
-  const ref = useRef();
-  const st = useRef(state);
-  st.current = state;
-  useEffect(() => {
-    const c = ref.current;
-    const ctx = c.getContext("2d");
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    c.width = 150 * dpr; c.height = 150 * dpr;
-    ctx.scale(dpr, dpr);
-    const N = 220;
-    const pts = Array.from({ length: N }, (_, i) => {
-      const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.39996;
-      return [Math.cos(th) * r, y, Math.sin(th) * r];
-    });
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let a = 0, amp = 0, raf;
-    const draw = () => {
-      const s = st.current;
-      const target = s === "listen" ? 1 : s === "think" ? 0.6 : s === "speak" ? 0.8 : 0.12;
-      amp += (target - amp) * 0.08;
-      a += reduce ? 0 : 0.004 + amp * 0.02;
-      ctx.clearRect(0, 0, 150, 150);
-      const t = performance.now() / 1000;
-      pts.forEach(([x, y, z], i) => {
-        const ca = Math.cos(a), sa = Math.sin(a);
-        let X = x * ca - z * sa, Z = x * sa + z * ca;
-        const wob = 1 + amp * 0.12 * Math.sin(t * 5 + i * 0.7);
-        const R = 52 * wob;
-        const px = 75 + X * R, py = 75 + y * R * 0.98;
-        const d = (Z + 1) / 2;
-        ctx.globalAlpha = 0.15 + d * 0.85;
-        ctx.fillStyle = i % 5 === 0 ? "#8FD3FF" : i % 7 === 0 ? "#FFC6A8" : "#B9A6FF";
-        ctx.beginPath(); ctx.arc(px, py, 0.6 + d * 1.5, 0, 6.283); ctx.fill();
-      });
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return <div className="orb" aria-hidden="true"><canvas ref={ref} /></div>;
+/* Tarjeta de un equipo dentro de la conversación: estado, números clave y la tendencia del ΔT */
+function EqCard({ it, th, go }) {
+  const rs = it.readings;
+  const L = LEVELS[it.level];
+  return (
+    <div className="card in" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+        <b className="display" style={{ fontSize: 16, textTransform: "uppercase", minWidth: 0 }}>{it.eq.name}</b>
+        <Pill level={it.level} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+        {[
+          { l: "ΔT actual", v: it.ev && it.ev.dT ? fmt(it.ev.dT.value) + "°" : "—" },
+          { l: "Tendencia", v: it.dtTrend !== null ? (it.dtTrend > 0 ? "+" : "") + fmt(it.dtTrend) + "/m" : "—" },
+          { l: "A " + th.deltaTMayor + " °C", v: it.monthsToMajor !== null && it.monthsToMajor < 24 ? "~" + Math.max(1, Math.round(it.monthsToMajor)) + " m" : "—" }
+        ].map((k) => <div key={k.l} className="card" style={{ padding: "8px 10px", borderRadius: 14 }}><div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>{k.v}</div><div className="muted" style={{ fontSize: 10.5, fontWeight: 600 }}>{k.l}</div></div>)}
+      </div>
+      {rs.length > 1 && <LineChart height={130} delay={150} labels={rs.map((r) => fmtShort(r.date))} series={[{ name: "ΔT", color: L.rank >= 2 ? "var(--warn)" : "var(--peach)", area: true, values: it.series.map((x) => x.dT) }]}
+        bands={[{ y: th.deltaTMedia, color: "#FFB05C", label: "probable" }, { y: th.deltaTMayor, color: "#FF7A59", label: "mayor" }]} />}
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn press" style={{ flex: 1, height: 42, fontSize: 13 }} onClick={() => go("hist", { eqId: it.eq.id })}>Ver histórico</button>
+        <button className="btn sec press" style={{ flex: 1, height: 42, fontSize: 13 }} onClick={() => go("read", { eqId: it.eq.id })}>Nueva lectura</button>
+      </div>
+    </div>
+  );
 }
 
 export default function Assistant({ ctx }) {
@@ -55,11 +37,16 @@ export default function Assistant({ ctx }) {
   const [msgs, setMsgs] = useState(() => {
     if (eqIt) {
       const d = diagnoseItem(eqIt, th);
-      return [{ ai: true, text: `${eqIt.eq.name}: ${LEVELS[eqIt.level].label}. ${d.length ? d.slice(0, 2).map((x) => x.title + ": " + x.detail.replace(/\.$/, "") + ".").join(" ") : "Sin hallazgos en la última lectura."} ¿Qué quieres saber?` }];
+      return [{ ai: true, text: `${eqIt.eq.name}: ${LEVELS[eqIt.level].label}. ${d.length ? d.slice(0, 2).map((x) => x.title + ": " + x.detail.replace(/\.$/, "") + ".").join(" ") : "Sin hallazgos en la última lectura."} ¿Qué quieres saber?` }, { card: eqIt.eq.id }];
     }
     return [{ ai: true, text: daySummary(items, data.readings, data.users).lines.join(" ") }];
   });
   const [q, setQ] = useState("");
+  const [focusId, setFocusId] = useState(eqIt ? eqIt.eq.id : null);
+  const findItem = (text) => {
+    const t = String(text || "").toLowerCase();
+    return items.find((i) => { const code = i.eq.name.split(" · ")[0].toLowerCase().trim(); return code.length >= 2 && t.includes(code); });
+  };
   const [state, setState] = useState("idle");
   const recRef = useRef();
   const endRef = useRef();
@@ -98,7 +85,9 @@ export default function Assistant({ ctx }) {
       await new Promise((r) => setTimeout(r, 350));
       answer = localAnswer(scoped, items, data.readings, th);
     }
-    setMsgs((m) => [...m, { ai: true, text: answer }]);
+    const hit = findItem(question) || findItem(answer) || eqIt;
+    if (hit) setFocusId(hit.eq.id);
+    setMsgs((m) => { const last = [...m].reverse().find((x) => x.card); return [...m, { ai: true, text: answer }, ...(hit && (!last || last.card !== hit.eq.id) ? [{ card: hit.eq.id }] : [])]; });
     setState("speak");
     speak(answer);
     setTimeout(() => setState("idle"), Math.min(8000, 1200 + answer.length * 45));
@@ -112,20 +101,30 @@ export default function Assistant({ ctx }) {
     recRef.current = listen((t, isFinal) => { setQ(t); if (isFinal) final = t; }, () => { setState("idle"); if (final) ask(final); });
   };
 
+  const focus = items.find((i) => i.eq.id === focusId);
+  const worried = focus ? focus.rank >= 2 : items.some((i) => i.rank >= 3);
+  const mood = state === "listen" ? "listen" : state === "think" ? "think" : worried ? "worry" : "ok";
+  const moodLabel = state === "listen" ? "te escucho" : state === "think" ? "pensando" : worried ? (focus ? "esto hay que revisarlo" : "hay equipos por revisar") : "todo en orden";
+
   const SUG = eqIt ? ["¿Qué causa el problema?", "¿Qué hago primero?", "¿Cómo va la tendencia?"] : ["Resumen del día", "¿Qué intervengo primero?", "Tendencias", "Equipos pendientes"];
 
   return (
     <main className="screen" style={{ paddingBottom: "calc(16px + var(--safe-b))" }}>
       <div className="hdr in">
         <button className="icon-btn press" onClick={() => go(eqIt ? "hist" : "home", eqIt ? { eqId: eqIt.eq.id } : {})} aria-label="Volver"><Icon n="back" /></button>
-        <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>{hasGemini() ? "IA local + Gemini" : "IA local · sin costo"}</span>
+        <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>{hasGemini() ? "Chispa · IA local + Gemini" : "Chispa · IA local, sin costo"}</span>
         <button className="icon-btn press" onClick={() => window.speechSynthesis && window.speechSynthesis.cancel()} aria-label="Silenciar"><Icon n="mute" size={18} /></button>
       </div>
-      <Orb state={state} />
-      <p className="display" style={{ textAlign: "center", fontSize: 18, marginTop: -4 }}>{state === "listen" ? "Te escucho…" : state === "think" ? "Pensando…" : eqIt ? eqIt.eq.name.split(" · ")[0] : "Asistente"}</p>
+      <div className="ai-head in" aria-live="polite">
+        <Chispa size={msgs.filter((x) => !x.card).length > 1 ? 74 : 112} mood={mood} label={"Chispa · " + moodLabel} />
+        <span className="ai-state">Chispa · {moodLabel}</span>
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }} aria-live="polite">
-        {msgs.map((m, k) => <div key={k} className={"bubble in " + (m.ai ? "ai" : "me")} style={{ whiteSpace: "pre-wrap" }}>{m.img && <img src={m.img} alt="" style={{ display: "block", width: "100%", maxWidth: 220, borderRadius: 12, marginBottom: 6 }} />}{m.text}</div>)}
+        {msgs.map((m, k) => {
+          if (m.card) { const it = items.find((i) => i.eq.id === m.card); return it ? <EqCard key={k} it={it} th={th} go={go} /> : null; }
+          return <div key={k} className={"bubble in " + (m.ai ? "ai" : "me")} style={{ whiteSpace: "pre-wrap" }}>{m.img && <img src={m.img} alt="" style={{ display: "block", width: "100%", maxWidth: 220, borderRadius: 12, marginBottom: 6 }} />}{m.text}</div>;
+        })}
         <div ref={endRef} />
       </div>
 

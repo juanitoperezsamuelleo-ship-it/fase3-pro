@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { LEVELS, fmt, relDays, localDay } from "../lib/calc.js";
 import { sortByRisk } from "../lib/analysis.js";
 import { daySummary, diagnoseItem } from "../lib/ai.js";
-import { Icon, Spark, Empty } from "../ui.jsx";
+import { Icon, Spark, Empty, Chispa } from "../ui.jsx";
 
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -51,9 +51,9 @@ export default function Home({ ctx }) {
             <Icon n={ctx.mode === "dark" ? "sun" : "moon"} size={18} />
           </button>
         )}
-        <button className="icon-btn press" aria-label="Asistente" onClick={() => go("ai")} style={{ background: "radial-gradient(circle at 35% 30%, #fff 0, #B9A6FF 35%, #6B5BD6 75%)", color: "#111214", boxShadow: "0 0 24px rgba(185,166,255,.45)" }}>
+        {ctx.prefs.theme !== "cristal" && <button className="icon-btn press" aria-label="Asistente" onClick={() => go("ai")} style={{ background: "radial-gradient(circle at 35% 30%, #fff 0, #B9A6FF 35%, #6B5BD6 75%)", color: "#111214", boxShadow: "0 0 24px rgba(185,166,255,.45)" }}>
           <Icon n="spark" size={18} />
-        </button>
+        </button>}
         </div>
       </div>
 
@@ -70,10 +70,13 @@ export default function Home({ ctx }) {
         ))}
       </div>
 
-      <button className="card press in" onClick={() => go("ai")} style={{ border: 0, textAlign: "left", background: "linear-gradient(135deg,var(--tint-ai),var(--s1) 70%)", animationDelay: "80ms", display: "flex", flexDirection: "column", gap: 6 }}>
-        <span className="row" style={{ gap: 8, color: "var(--lilac)", fontSize: 12, fontWeight: 700 }}><Icon n="spark" size={15} /> RESUMEN DEL DÍA</span>
-        {sum.lines.slice(0, 3).map((l, k) => <span key={k} style={{ fontSize: 14, color: k ? "var(--muted)" : "var(--text)" }}>{l}</span>)}
-        <span className="row" style={{ gap: 6, fontSize: 13, fontWeight: 700, marginTop: 2 }}>Preguntar al asistente <Icon n="chev" size={15} /></span>
+      <button className="card press in" onClick={() => go("ai")} style={{ border: 0, textAlign: "left", background: "linear-gradient(135deg,var(--tint-ai),var(--s1) 70%)", animationDelay: "80ms", display: "flex", gap: 12, alignItems: "center" }}>
+        <Chispa size={58} mood={sum.crit ? "worry" : "ok"} label="" style={{ flexShrink: 0 }} />
+        <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+          <span style={{ color: "var(--lilac)", fontSize: 11, fontWeight: 700, letterSpacing: ".12em" }}>CHISPA · RESUMEN DEL DÍA</span>
+          {sum.lines.slice(0, 3).map((l, k) => <span key={k} style={{ fontSize: 14, color: k ? "var(--muted)" : "var(--text)" }}>{l}</span>)}
+          <span className="row" style={{ gap: 6, fontSize: 13, fontWeight: 700, marginTop: 2 }}>Preguntarle a Chispa <Icon n="chev" size={15} /></span>
+        </span>
       </button>
 
       <button className="btn press in" onClick={() => go("read")} style={{ animationDelay: "110ms" }}><Icon n="plus" /> Nueva lectura</button>

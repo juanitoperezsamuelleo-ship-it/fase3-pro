@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LEVELS, fmt, fmtDate, fmtShort, relDays, num } from "../lib/calc.js";
 import { evaluate } from "../lib/templates.js";
 import { diagnoseItem } from "../lib/ai.js";
-import { Icon, Pill, Sheet, Tabs, useToast, Header, LineChart, Empty, CountUp, FilterBar, applyFilter, ShowMore } from "../ui.jsx";
+import { Icon, Pill, Sheet, Tabs, useToast, Header, LineChart, Empty, CountUp, FilterBar, applyFilter, ShowMore, Chispa } from "../ui.jsx";
 import { EqRow } from "./Home.jsx";
 import { sortByRisk } from "../lib/analysis.js";
 
@@ -151,6 +151,20 @@ function EquipmentHistory({ ctx, it }) {
           {it.monthsToMajor !== null && it.monthsToMajor < 12 && (
             <div className="card in sheen" style={{ background: "var(--tint-warn)", fontSize: 14, animationDelay: "180ms" }}>
               <b style={{ color: "var(--warn)" }}>Proyección:</b> a este ritmo el ΔT llega a {th.deltaTMayor} °C (deficiencia mayor) en ~{Math.max(1, Math.round(it.monthsToMajor))} {Math.round(it.monthsToMajor) === 1 ? "mes" : "meses"}.
+            </div>
+          )}
+          {(it.rank >= 1 || diag.length > 0 || (it.dtTrend !== null && it.dtTrend > 0.3)) && (
+            <div className="card in sayer" style={{ animationDelay: "200ms" }}>
+              <Chispa size={46} mood={it.rank >= 2 ? "worry" : "ok"} label="Chispa" />
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 14, lineHeight: 1.45 }}>
+                  {diag[0] ? <><b>{diag[0].title}.</b> {diag[0].detail}</> : <b>{LEVELS[it.level].label}.</b>}
+                  {it.dtTrend !== null && it.dtTrend > 0.3 ? ` El ΔT sube ${fmt(it.dtTrend)} °C por mes.` : ""}
+                </span>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <button className="btn sec press" style={{ height: 40, fontSize: 13, padding: "0 14px" }} onClick={() => go("ai", { eqId: it.eq.id })}>Preguntarle a Chispa</button>
+                </div>
+              </div>
             </div>
           )}
           <ChartCard title="ΔT ENTRE FASES · °C" delay={220}>

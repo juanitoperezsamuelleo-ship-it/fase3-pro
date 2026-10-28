@@ -323,3 +323,35 @@ export function ShowMore({ total, shown, onMore }) {
   if (shown >= total) return null;
   return <button className="btn sec press" style={{ height: 44, width: "100%" }} onClick={onMore}>Mostrar más ({total - shown})</button>;
 }
+
+/* ───────── Chispa: el asistente, en vidrio (tema Cristal) ─────────
+   mood: "ok" (ojos verdes) · "worry" (ojos ámbar y cejas) · "listen" · "think" */
+export function Chispa({ mood = "ok", size = 44, label = "Chispa", style }) {
+  const k = "ch" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  return (
+    <svg className={"chispa " + mood} viewBox="0 0 160 150" width={size} height={size * 0.94} role="img" aria-label={label} style={style}>
+      <defs>
+        <linearGradient id={k + "b"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FFD29A" stopOpacity=".95" /><stop offset=".55" stopColor="#FFAE63" stopOpacity=".88" /><stop offset="1" stopColor="#F0873A" stopOpacity=".82" /></linearGradient>
+        <radialGradient id={k + "s"} cx=".3" cy=".18" r=".55"><stop offset="0" stopColor="#fff" stopOpacity=".85" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
+        <linearGradient id={k + "f"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1B1D26" /><stop offset="1" stopColor="#090A0E" /></linearGradient>
+      </defs>
+      <g className="bod">
+        <circle className="ring" cx="80" cy="18" r="22" fill="none" stroke="var(--lilac)" strokeWidth="2" />
+        <circle className="ring" cx="80" cy="18" r="22" fill="none" stroke="var(--lilac)" strokeWidth="2" />
+        <rect x="60" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
+        <rect x="89" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
+        <rect x="22" y="28" width="116" height="102" rx="36" fill={`url(#${k}b)`} />
+        <rect x="22" y="28" width="116" height="102" rx="36" fill={`url(#${k}s)`} />
+        <rect x="22.75" y="28.75" width="114.5" height="100.5" rx="35.25" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="1.5" />
+        <path d="M40 124c18 6 62 6 80 0" stroke="rgba(120,50,0,.22)" strokeWidth="3" fill="none" strokeLinecap="round" />
+        <rect x="38" y="52" width="84" height="58" rx="20" fill={`url(#${k}f)`} stroke="rgba(255,255,255,.18)" strokeWidth="1" />
+        <path d="M46 60c8-4 22-5 32-4" stroke="rgba(255,255,255,.14)" strokeWidth="3" fill="none" strokeLinecap="round" />
+        <path className="brow" d="M54 62 L68 66 M106 62 L92 66" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <g className="eyes"><rect className="eye" x="57" y="68" width="12" height="20" rx="6" /><rect className="eye" x="91" y="68" width="12" height="20" rx="6" /></g>
+        <path className="mouth" d={mood === "worry" ? "M70 99 Q80 95 90 99" : "M70 97 Q80 104 90 97"} strokeWidth="3" strokeLinecap="round" fill="none" />
+        <g className="dots" fill="var(--lilac)"><circle cx="128" cy="26" r="3.5" /><circle cx="138" cy="18" r="4" /><circle cx="149" cy="9" r="4.5" /></g>
+        <rect x="46" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" /><rect x="96" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" />
+      </g>
+    </svg>
+  );
+}
