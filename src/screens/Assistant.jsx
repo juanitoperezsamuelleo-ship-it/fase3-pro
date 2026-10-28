@@ -48,6 +48,10 @@ export default function Assistant({ ctx }) {
     return items.find((i) => { const code = i.eq.name.split(" · ")[0].toLowerCase().trim(); return code.length >= 2 && t.includes(code); });
   };
   const [state, setState] = useState("idle");
+  const chRef = useRef();
+  const gest = (g) => chRef.current && chRef.current.gesture(g);
+  // Al abrir: Chispa saluda con un salto y un chispazo
+  useEffect(() => { const t = setTimeout(() => { gest("hop"); setTimeout(() => gest("zap"), 350); }, 350); return () => clearTimeout(t); }, []); // eslint-disable-line
   const recRef = useRef();
   const endRef = useRef();
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
@@ -74,7 +78,7 @@ export default function Assistant({ ctx }) {
       else { try { answer = await askWithImage(photo, question, eqIt, th); } catch (e) { answer = "No pude analizar la foto: " + e.message; } }
       setMsgs((m) => [...m, { ai: true, text: answer }]);
       setState("speak"); speak(answer);
-      setTimeout(() => setState("idle"), Math.min(9000, 1200 + answer.length * 45));
+      setTimeout(() => { setState("idle"); gest("nod"); }, Math.min(9000, 1200 + answer.length * 45));
       return;
     }
     const scoped = eqIt && !/resumen|todos|planta|prioridad/i.test(question) ? `${question} (sobre ${eqIt.eq.name.split(" · ")[0]})` : question;
@@ -90,7 +94,9 @@ export default function Assistant({ ctx }) {
     setMsgs((m) => { const last = [...m].reverse().find((x) => x.card); return [...m, { ai: true, text: answer }, ...(hit && (!last || last.card !== hit.eq.id) ? [{ card: hit.eq.id }] : [])]; });
     setState("speak");
     speak(answer);
-    setTimeout(() => setState("idle"), Math.min(8000, 1200 + answer.length * 45));
+    // Al terminar de hablar: niega si no encontró algo, baila si el equipo va bien, si no asiente
+    const after = /no (encontr|tengo|s[eé]\b|hay (datos|lecturas))/i.test(answer) ? "no" : hit && hit.rank <= 0 ? "wiggle" : "nod";
+    setTimeout(() => { setState("idle"); gest(after); }, Math.min(8000, 1200 + answer.length * 45));
   };
 
   const mic = () => {
@@ -102,9 +108,11 @@ export default function Assistant({ ctx }) {
   };
 
   const focus = items.find((i) => i.eq.id === focusId);
-  const worried = focus ? focus.rank >= 2 : items.some((i) => i.rank >= 3);
-  const mood = state === "listen" ? "listen" : state === "think" ? "think" : worried ? "worry" : "ok";
-  const moodLabel = state === "listen" ? "te escucho" : state === "think" ? "pensando" : worried ? (focus ? "esto hay que revisarlo" : "hay equipos por revisar") : "todo en orden";
+  // Cara de Chispa según el equipo del que se habla: crítico = alarma, revisar = preocupado, bien = contento
+  const tone = focus ? (focus.rank >= 3 ? "alert" : focus.rank >= 2 ? "worry" : focus.rank <= 0 ? "happy" : "ok") : items.some((i) => i.rank >= 3) ? "worry" : "ok";
+  const mood = state === "listen" ? "listen" : state === "think" ? "think" : state === "speak" ? tone : tone === "alert" ? "worry" : tone;
+  const moodLabel = state === "listen" ? "te escucho" : state === "think" ? "pensando" : mood === "alert" ? "¡atención!" : mood === "worry" ? (focus ? "esto hay que revisarlo" : "hay equipos por revisar") : mood === "happy" ? "todo en orden" : "lista";
+  const moodColor = mood === "alert" ? "var(--crit)" : mood === "worry" ? "var(--warn)" : mood === "happy" ? "var(--ok)" : undefined;
 
   const SUG = eqIt ? ["¿Qué causa el problema?", "¿Qué hago primero?", "¿Cómo va la tendencia?"] : ["Resumen del día", "¿Qué intervengo primero?", "Tendencias", "Equipos pendientes"];
 
@@ -116,8 +124,8 @@ export default function Assistant({ ctx }) {
         <button className="icon-btn press" onClick={() => window.speechSynthesis && window.speechSynthesis.cancel()} aria-label="Silenciar"><Icon n="mute" size={18} /></button>
       </div>
       <div className="ai-head in" aria-live="polite">
-        <Chispa size={msgs.filter((x) => !x.card).length > 1 ? 74 : 112} mood={mood} label={"Chispa · " + moodLabel} />
-        <span className="ai-state">Chispa · {moodLabel}</span>
+        <Chispa ref={chRef} size={msgs.filter((x) => !x.card).length > 1 ? 78 : 118} mood={mood} talking={state === "speak"} sleepAfter={60000} label={"Chispa · " + moodLabel} />
+        <span className="ai-state" style={{ color: moodColor }}>Chispa · {moodLabel}</span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }} aria-live="polite">
@@ -141,7 +149,7 @@ export default function Assistant({ ctx }) {
       <form className="row" style={{ gap: 6, flexShrink: 0 }} onSubmit={(e) => { e.preventDefault(); ask(); }}>
         <button type="button" className="icon-btn press" style={{ width: 50, height: 50 }} onClick={() => fileRef.current.click()} aria-label="Adjuntar foto"><Icon n="camera" /></button>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files[0])} />
-        <input className="input grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder={img ? "¿Qué quieres saber de la foto?" : "Pregunta o envía una foto"} aria-label="Pregunta" style={{ minWidth: 0 }} />
+        <input className="input grow" value={q} onChange={(e) => { if (!q && e.target.value) gest("tilt"); setQ(e.target.value); }} placeholder={img ? "¿Qué quieres saber de la foto?" : "Pregunta o envía una foto"} aria-label="Pregunta" style={{ minWidth: 0 }} />
         {canListen() && <button type="button" className="icon-btn press" onClick={mic} aria-label={state === "listen" ? "Detener" : "Hablar"} style={{ width: 50, height: 50, background: state === "listen" ? "var(--lilac)" : undefined, color: state === "listen" ? "#111214" : undefined }}><Icon n="mic" /></button>}
         <button className="icon-btn light press" style={{ width: 50, height: 50 }} aria-label="Enviar"><Icon n="send" size={18} /></button>
       </form>

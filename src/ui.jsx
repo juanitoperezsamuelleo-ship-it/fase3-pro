@@ -325,33 +325,119 @@ export function ShowMore({ total, shown, onMore }) {
 }
 
 /* ───────── Chispa: el asistente, en vidrio (tema Cristal) ─────────
-   mood: "ok" (ojos verdes) · "worry" (ojos ámbar y cejas) · "listen" · "think" */
-export function Chispa({ mood = "ok", size = 44, label = "Chispa", style }) {
+   mood: "ok" · "listen" · "think" · "talk" · "happy" · "worry" · "alert".
+   Vida propia: respira, parpadea, mira a los lados, suelta chispazos, se duerme si nadie lo usa.
+   Sigue con los ojos el dedo o el mouse y, en el celular, la inclinación del teléfono (sin cámara).
+   Gestos de una vez con ref.current.gesture("hop" | "tap" | "nod" | "no" | "tilt" | "zap" | "wink" | "wiggle"). */
+const CH = { subs: new Set(), on: false, askedTilt: false };
+const chReduce = () => typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function chStart() {
+  if (CH.on || typeof window === "undefined") return;
+  CH.on = true;
+  let raf = 0, px = 0, py = 0;
+  const pt = (e) => { px = e.clientX; py = e.clientY; if (!raf) raf = requestAnimationFrame(() => { raf = 0; CH.subs.forEach((s) => s.point(px, py)); }); };
+  window.addEventListener("pointermove", pt, { passive: true });
+  window.addEventListener("pointerdown", pt, { passive: true });
+  window.addEventListener("deviceorientation", (e) => {
+    if (e.gamma == null) return;
+    const x = Math.max(-1, Math.min(1, e.gamma / 25)), y = Math.max(-1, Math.min(1, ((e.beta || 0) - 40) / 25));
+    CH.subs.forEach((s) => s.tilt(x, y));
+  });
+}
+function chAskTilt() {
+  // iPhone pide permiso para leer la inclinación; se pide la primera vez que tocan a Chispa
+  if (CH.askedTilt) return;
+  CH.askedTilt = true;
+  const D = typeof window !== "undefined" && window.DeviceOrientationEvent;
+  if (D && typeof D.requestPermission === "function") D.requestPermission().catch(() => {});
+}
+const CH_MOOD = { ok: "idle", idle: "idle", listen: "listen", think: "think", talk: "talk", happy: "happy", worry: "worry", alert: "alert" };
+
+export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44, label = "Chispa", style, talking = false, alive = true, sleepAfter = 45000, onClick }, ref) {
   const k = "ch" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  const svg = useRef(), gaze = useRef();
+  const base = CH_MOOD[mood] || "idle";
+  const [sleeping, setSleeping] = useState(false);
+  const live = useRef({}); live.current = { base, sleeping };
+  const lastAct = useRef(Date.now());
+  const gesture = useCallback((g) => {
+    const el = svg.current;
+    if (!el || chReduce()) return;
+    el.classList.remove("g-" + g); void el.getBoundingClientRect(); el.classList.add("g-" + g);
+    setTimeout(() => el.classList.remove("g-" + g), g === "tilt" ? 1250 : 900);
+  }, []);
+  React.useImperativeHandle(ref, () => ({ gesture }), [gesture]);
+  const wake = () => { lastAct.current = Date.now(); if (live.current.sleeping) { setSleeping(false); gesture("hop"); } };
+  useEffect(() => {
+    if (!alive || chReduce()) return;
+    chStart();
+    let lastPoint = 0;
+    const setGaze = (x, y) => { const s = live.current; if (s.sleeping || s.base === "think" || !gaze.current) return; gaze.current.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`; };
+    const sub = {
+      point(x, y) {
+        const el = svg.current; if (!el) return;
+        const r = el.getBoundingClientRect(); if (!r.width) return;
+        const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height * 0.55), d = Math.hypot(dx, dy) || 1, m = Math.min(1, d / 260);
+        lastPoint = Date.now();
+        setGaze((dx / d) * 6 * m, (dy / d) * 4.5 * m);
+        if (Date.now() - lastAct.current > 800) wake(); else lastAct.current = Date.now();
+      },
+      tilt(x, y) { if (Date.now() - lastPoint < 1500) return; setGaze(x * 6, y * 4.5); }
+    };
+    CH.subs.add(sub);
+    let next = Date.now() + 2500;
+    const iv = setInterval(() => {
+      const s = live.current, now = Date.now();
+      if (document.hidden) return;
+      if (!s.sleeping && sleepAfter && now - lastAct.current > sleepAfter && (s.base === "idle" || s.base === "happy")) { setSleeping(true); return; }
+      if (s.sleeping || s.base === "think" || now < next) return;
+      const r = Math.random();
+      if (r < 0.4 && now - lastPoint > 1500 && gaze.current) {
+        gaze.current.style.transform = `translate(${Math.random() < 0.5 ? -6 : 6}px,${(Math.random() * 4 - 2).toFixed(1)}px)`;
+        setTimeout(() => { if (gaze.current && Date.now() - lastPoint > 1500) gaze.current.style.transform = ""; }, 900);
+      } else if (r < 0.65) gesture("zap");
+      else if (r < 0.78) gesture("tilt");
+      next = now + 3500 + Math.random() * 4500;
+    }, 700);
+    return () => { CH.subs.delete(sub); clearInterval(iv); };
+  }, [alive, sleepAfter, gesture]); // eslint-disable-line
+  useEffect(() => { if (base !== "idle" && base !== "happy") { lastAct.current = Date.now(); setSleeping(false); } }, [base]);
+  const state = sleeping ? "sleep" : base;
+  const tap = (e) => { chAskTilt(); wake(); gesture(Math.random() < 0.5 ? "tap" : "hop"); setTimeout(() => gesture("zap"), 250); if (onClick) onClick(e); };
   return (
-    <svg className={"chispa " + mood} viewBox="0 0 160 150" width={size} height={size * 0.94} role="img" aria-label={label} style={style}>
+    <svg ref={svg} className={"chispa" + (talking ? " talking" : "")} data-s={state} viewBox="0 0 160 150" width={size} height={size * 0.94} role="img" aria-label={label || undefined} aria-hidden={label ? undefined : true} style={style} onClick={tap}>
       <defs>
         <linearGradient id={k + "b"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FFD29A" stopOpacity=".95" /><stop offset=".55" stopColor="#FFAE63" stopOpacity=".88" /><stop offset="1" stopColor="#F0873A" stopOpacity=".82" /></linearGradient>
         <radialGradient id={k + "s"} cx=".3" cy=".18" r=".55"><stop offset="0" stopColor="#fff" stopOpacity=".85" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
         <linearGradient id={k + "f"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1B1D26" /><stop offset="1" stopColor="#090A0E" /></linearGradient>
       </defs>
-      <g className="bod">
-        <circle className="ring" cx="80" cy="18" r="22" fill="none" stroke="var(--lilac)" strokeWidth="2" />
-        <circle className="ring" cx="80" cy="18" r="22" fill="none" stroke="var(--lilac)" strokeWidth="2" />
-        <rect x="60" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
-        <rect x="89" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
+      <g className="ch-root"><g className="ch-bod">
+        <circle className="ch-ring" cx="80" cy="18" r="22" /><circle className="ch-ring" cx="80" cy="18" r="22" />
+        <rect className="ch-prong" x="60" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
+        <rect className="ch-prong" x="89" y="6" width="11" height="28" rx="5.5" fill="rgba(30,32,40,.9)" stroke="rgba(255,255,255,.45)" strokeWidth="1" />
+        <path className="ch-zap" d="M71 15 L76 8 L79 15 L83 6 L89 13" />
         <rect x="22" y="28" width="116" height="102" rx="36" fill={`url(#${k}b)`} />
         <rect x="22" y="28" width="116" height="102" rx="36" fill={`url(#${k}s)`} />
         <rect x="22.75" y="28.75" width="114.5" height="100.5" rx="35.25" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="1.5" />
         <path d="M40 124c18 6 62 6 80 0" stroke="rgba(120,50,0,.22)" strokeWidth="3" fill="none" strokeLinecap="round" />
         <rect x="38" y="52" width="84" height="58" rx="20" fill={`url(#${k}f)`} stroke="rgba(255,255,255,.18)" strokeWidth="1" />
         <path d="M46 60c8-4 22-5 32-4" stroke="rgba(255,255,255,.14)" strokeWidth="3" fill="none" strokeLinecap="round" />
-        <path className="brow" d="M54 62 L68 66 M106 62 L92 66" strokeWidth="3" strokeLinecap="round" fill="none" />
-        <g className="eyes"><rect className="eye" x="57" y="68" width="12" height="20" rx="6" /><rect className="eye" x="91" y="68" width="12" height="20" rx="6" /></g>
-        <path className="mouth" d={mood === "worry" ? "M70 99 Q80 95 90 99" : "M70 97 Q80 104 90 97"} strokeWidth="3" strokeLinecap="round" fill="none" />
-        <g className="dots" fill="var(--lilac)"><circle cx="128" cy="26" r="3.5" /><circle cx="138" cy="18" r="4" /><circle cx="149" cy="9" r="4.5" /></g>
+        <g className="ch-face"><g className="ch-gaze" ref={gaze}>
+          <path className="ch-brow ch-bl" d="M54 62 L68 66" /><path className="ch-brow ch-br" d="M106 62 L92 66" />
+          <g className="ch-en"><rect className="ch-eye" x="57" y="68" width="12" height="20" rx="6" /><rect className="ch-eye" x="91" y="68" width="12" height="20" rx="6" /></g>
+          <path className="ch-eh" d="M57 81 Q63 70 69 81 M91 81 Q97 70 103 81" />
+          <path className="ch-es" d="M57 80 Q63 84 69 80 M91 80 Q97 84 103 80" />
+          <path className="ch-m ch-smile" d="M70 97 Q80 104 90 97" />
+          <path className="ch-m ch-flat" d="M70 100 Q80 96 90 100" />
+          <ellipse className="ch-m ch-open" cx="80" cy="99" rx="6" ry="4.5" />
+          <path className="ch-m ch-big" d="M68 95 Q80 110 92 95 Z" />
+        </g></g>
+        <path className="ch-sweat" d="M124 44 q-6 9 0 12 q6 -3 0 -12z" />
+        <g className="ch-dots"><circle cx="128" cy="26" r="3.5" /><circle cx="138" cy="18" r="4" /><circle cx="149" cy="9" r="4.5" /></g>
+        <g className="ch-zz"><text x="120" y="32" fontSize="12">z</text><text x="130" y="20" fontSize="15">z</text><text x="141" y="7" fontSize="18">z</text></g>
+        <g className="ch-spk"><path d="M14 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" /><path d="M142 62 l2.5 5.5 5.5 2.5 -5.5 2.5 -2.5 5.5 -2.5 -5.5 -5.5 -2.5 5.5 -2.5z" /><path d="M24 112 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" /><path d="M136 118 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2z" /></g>
         <rect x="46" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" /><rect x="96" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" />
-      </g>
+      </g></g>
     </svg>
   );
-}
+});

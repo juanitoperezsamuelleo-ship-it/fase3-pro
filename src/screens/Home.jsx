@@ -71,7 +71,7 @@ export default function Home({ ctx }) {
       </div>
 
       <button className="card press in" onClick={() => go("ai")} style={{ border: 0, textAlign: "left", background: "linear-gradient(135deg,var(--tint-ai),var(--s1) 70%)", animationDelay: "80ms", display: "flex", gap: 12, alignItems: "center" }}>
-        <Chispa size={58} mood={sum.crit ? "worry" : "ok"} label="" style={{ flexShrink: 0 }} />
+        <Chispa size={58} mood={sum.crit ? "worry" : "ok"} label="" sleepAfter={90000} style={{ flexShrink: 0 }} />
         <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
           <span style={{ color: "var(--lilac)", fontSize: 11, fontWeight: 700, letterSpacing: ".12em" }}>CHISPA · RESUMEN DEL DÍA</span>
           {sum.lines.slice(0, 3).map((l, k) => <span key={k} style={{ fontSize: 14, color: k ? "var(--muted)" : "var(--text)" }}>{l}</span>)}

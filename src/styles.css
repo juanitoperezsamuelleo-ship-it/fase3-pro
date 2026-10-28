@@ -404,27 +404,97 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
 .app .tg-chispa.icon-btn, .app[data-theme="cristal"] .tg-chispa.icon-btn { position: absolute; right: 14px; bottom: calc(14px + var(--safe-b)); width: 64px; height: 64px; z-index: 20; transition: opacity .2s ease, transform .45s var(--spring); }
 .app:has(.sheet) .tglass, .app:has(.sheet) .tg-chispa { opacity: 0; pointer-events: none; transform: translateY(20px); }
 
-/* ─────────────── Chispa ─────────────── */
-.chispa { display: block; overflow: visible; --eye: #8EF0B9; }
-.chispa .bod { animation: chBob 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+/* ─────────────── Chispa · estados de ánimo y gestos ─────────────── */
+.chispa { display: block; overflow: visible; --eye: #8EF0B9; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+.chispa .ch-root { transform-box: view-box; transform-origin: 80px 138px; transition: transform .45s var(--spring); }
+.chispa .ch-bod { animation: chBob 3.2s ease-in-out infinite; transform-box: view-box; transform-origin: 80px 138px; }
 @keyframes chBob { 50% { transform: translateY(-4px); } }
-.chispa .eyes { transform-box: view-box; transition: transform .4s var(--spring); }
-.chispa .eye { fill: var(--eye); transform-box: fill-box; transform-origin: center; animation: chWink 4.6s infinite; transition: fill .35s; filter: drop-shadow(0 0 3px var(--eye)); }
+.chispa .ch-gaze { transition: transform .22s ease-out; }
+.chispa .ch-eye { fill: var(--eye); transform-box: fill-box; transform-origin: center; animation: chWink 4.6s infinite; transition: fill .35s; filter: drop-shadow(0 0 3px var(--eye)); }
 @keyframes chWink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
-.chispa .mouth { stroke: var(--eye); transition: stroke .35s; filter: drop-shadow(0 0 2px var(--eye)); }
-.chispa .brow { opacity: 0; stroke: #FFB05C; transition: opacity .3s; }
-.chispa .ring, .chispa .dots circle { opacity: 0; }
-.chispa .ring { transform-box: fill-box; transform-origin: center; }
-.chispa.listen .eye { transform: scale(1.15); }
-.chispa.listen .ring { animation: chRing 1.1s ease-out infinite; }
-.chispa.listen .ring + .ring { animation-delay: .4s; }
+.chispa .ch-en { transition: opacity .2s; }
+.chispa .ch-eh, .chispa .ch-es { opacity: 0; stroke: var(--eye); fill: none; stroke-width: 4; stroke-linecap: round; transition: opacity .2s; filter: drop-shadow(0 0 3px var(--eye)); }
+.chispa .ch-m { stroke: var(--eye); fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0; transition: opacity .2s; filter: drop-shadow(0 0 2px var(--eye)); }
+.chispa .ch-smile { opacity: 1; }
+.chispa .ch-open, .chispa .ch-big { fill: var(--eye); stroke: none; }
+.chispa .ch-open { transform-box: fill-box; transform-origin: center; }
+.chispa .ch-brow { opacity: 0; stroke: var(--eye); stroke-width: 3; stroke-linecap: round; fill: none; transition: opacity .3s, transform .3s; transform-box: fill-box; transform-origin: center; }
+.chispa .ch-ring { opacity: 0; fill: none; stroke: var(--eye); stroke-width: 2; transform-box: fill-box; transform-origin: center; }
+.chispa .ch-dots circle { fill: var(--eye); }
+.chispa .ch-dots circle, .chispa .ch-sweat, .chispa .ch-zz text, .chispa .ch-spk path, .chispa .ch-zap { opacity: 0; }
+.chispa .ch-prong { transform-box: fill-box; transform-origin: center bottom; }
+.chispa .ch-zap { stroke: #FFE27A; stroke-width: 2.5; fill: none; stroke-linejoin: round; filter: drop-shadow(0 0 4px #FFD34D); }
+.chispa .ch-spk path { fill: #FFE27A; transform-box: fill-box; transform-origin: center; filter: drop-shadow(0 0 3px #FFD34D); }
+.chispa .ch-sweat { fill: #8FD3FF; filter: drop-shadow(0 0 3px #8FD3FF); }
+.chispa .ch-zz text { fill: #B9C7FF; font-family: var(--display); font-weight: 700; }
+/* escuchando: se acerca, ondas en las patas */
+.chispa[data-s="listen"] .ch-root { transform: translateY(-4px) scale(1.07); }
+.chispa[data-s="listen"] .ch-eye { transform: scale(1.15); }
+.chispa[data-s="listen"] .ch-ring, .chispa[data-s="alert"] .ch-ring { animation: chRing 1.1s ease-out infinite; }
+.chispa .ch-ring + .ch-ring { animation-delay: .4s !important; }
 @keyframes chRing { 0% { opacity: .75; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.7); } }
-.chispa.think .eyes { transform: translate(-6px, -5px); }
-.chispa.think .dots circle { animation: chDot 1s ease-in-out infinite; }
-.chispa.think .dots circle:nth-child(2) { animation-delay: .15s; } .chispa.think .dots circle:nth-child(3) { animation-delay: .3s; }
+/* pensando: mira arriba y se balancea */
+.chispa[data-s="think"] .ch-root { animation: chSway 2.4s ease-in-out infinite; }
+@keyframes chSway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(-2deg); } }
+.chispa[data-s="think"] .ch-gaze { transform: translate(-7px, -6px) !important; }
+.chispa[data-s="think"] .ch-dots circle { animation: chDot 1s ease-in-out infinite; }
+.chispa .ch-dots circle:nth-child(2) { animation-delay: .15s; } .chispa .ch-dots circle:nth-child(3) { animation-delay: .3s; }
 @keyframes chDot { 50% { opacity: 1; } }
-.chispa.worry { --eye: #FFB05C; }
-.chispa.worry .brow { opacity: 1; }
+/* hablando: mueve la boca */
+.chispa[data-s="talk"] .ch-smile, .chispa.talking .ch-smile, .chispa.talking .ch-flat, .chispa.talking .ch-big { opacity: 0; }
+.chispa[data-s="talk"] .ch-open, .chispa.talking .ch-open { opacity: 1; animation: chTalk .22s ease-in-out infinite alternate; }
+@keyframes chTalk { from { transform: scaleY(.35); } to { transform: scaleY(1.15); } }
+.chispa[data-s="talk"] .ch-bod, .chispa.talking .ch-bod { animation-duration: 1.1s; }
+/* contento: ojos felices y destellos */
+.chispa[data-s="happy"] .ch-en { opacity: 0; } .chispa[data-s="happy"] .ch-eh { opacity: 1; }
+.chispa[data-s="happy"] .ch-smile { opacity: 0; } .chispa[data-s="happy"] .ch-big { opacity: 1; }
+.chispa[data-s="happy"] .ch-spk path { animation: chSpk 1.6s ease-in-out infinite; }
+.chispa .ch-spk path:nth-child(2) { animation-delay: .4s; } .chispa .ch-spk path:nth-child(3) { animation-delay: .8s; } .chispa .ch-spk path:nth-child(4) { animation-delay: 1.2s; }
+@keyframes chSpk { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 40% { opacity: 1; transform: scale(1.1) rotate(25deg); } 70% { opacity: .6; transform: scale(.8) rotate(45deg); } }
+/* preocupado: cejas, ojos ámbar, gota de sudor, tiembla */
+.chispa[data-s="worry"] { --eye: #FFB05C; }
+.chispa[data-s="worry"] .ch-brow { opacity: 1; }
+.chispa[data-s="worry"] .ch-smile { opacity: 0; } .chispa[data-s="worry"] .ch-flat { opacity: 1; }
+.chispa[data-s="worry"].talking .ch-flat { opacity: 0; }
+.chispa[data-s="worry"] .ch-sweat { animation: chSweat 2.4s ease-in infinite; }
+@keyframes chSweat { 0% { opacity: 0; transform: translateY(-4px); } 20% { opacity: .95; } 80% { opacity: .9; transform: translateY(10px); } 100% { opacity: 0; transform: translateY(14px); } }
+.chispa[data-s="worry"] .ch-root { animation: chShiver 3s ease-in-out infinite; }
+@keyframes chShiver { 0%, 86%, 100% { transform: none; } 88% { transform: translateX(-1.5px); } 90% { transform: translateX(1.5px); } 92% { transform: translateX(-1.5px); } 94% { transform: translateX(1px); } }
+/* alerta crítica: ojos rojos, alarma */
+.chispa[data-s="alert"] { --eye: #FF5C7A; }
+.chispa[data-s="alert"] .ch-brow { opacity: 1; }
+.chispa[data-s="alert"] .ch-bl { transform: rotate(14deg); } .chispa[data-s="alert"] .ch-br { transform: rotate(-14deg); }
+.chispa[data-s="alert"] .ch-smile { opacity: 0; } .chispa[data-s="alert"] .ch-open { opacity: 1; }
+.chispa[data-s="alert"] .ch-root { animation: chAlarm 1.6s ease-in-out infinite; }
+@keyframes chAlarm { 0%, 60%, 100% { transform: none; } 64% { transform: translateX(-4px) rotate(-3deg); } 68% { transform: translateX(4px) rotate(3deg); } 72% { transform: translateX(-3px) rotate(-2deg); } 76% { transform: translateX(2px); } }
+/* dormido: zzz */
+.chispa[data-s="sleep"] .ch-en { opacity: 0; } .chispa[data-s="sleep"] .ch-es { opacity: 1; }
+.chispa[data-s="sleep"] .ch-root { transform: rotate(7deg) translateY(2px); }
+.chispa[data-s="sleep"] .ch-bod { animation-duration: 5s; }
+.chispa[data-s="sleep"] .ch-gaze { transform: none !important; }
+.chispa[data-s="sleep"] .ch-zz text { animation: chZz 3s ease-in-out infinite; }
+.chispa .ch-zz text:nth-child(2) { animation-delay: 1s; } .chispa .ch-zz text:nth-child(3) { animation-delay: 2s; }
+@keyframes chZz { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: .9; } 100% { opacity: 0; transform: translate(8px, -10px); } }
+/* gestos de una vez */
+.chispa.g-hop .ch-root { animation: chHop .75s var(--out); }
+@keyframes chHop { 0% { transform: none; } 18% { transform: scale(1.1, .88); } 45% { transform: translateY(-20px) scale(.94, 1.08); } 72% { transform: scale(1.07, .93); } 100% { transform: none; } }
+.chispa.g-tap .ch-root { animation: chTap .45s var(--out); }
+@keyframes chTap { 0% { transform: none; } 30% { transform: scale(1.08, .9); } 65% { transform: scale(.96, 1.05); } 100% { transform: none; } }
+.chispa.g-nod .ch-face { animation: chNod .8s ease-in-out; }
+@keyframes chNod { 0%, 100% { transform: none; } 25%, 75% { transform: translateY(5px); } 50% { transform: translateY(-1px); } }
+.chispa.g-no .ch-face { animation: chNo .8s ease-in-out; }
+@keyframes chNo { 0%, 100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(4px); } }
+.chispa.g-tilt .ch-root { animation: chTilt 1.2s var(--spring); }
+@keyframes chTilt { 0%, 100% { transform: none; } 30%, 70% { transform: rotate(-11deg); } }
+.chispa.g-zap .ch-zap { animation: chZap .7s steps(1); }
+@keyframes chZap { 0% { opacity: 1; } 15% { opacity: 0; } 30% { opacity: 1; } 50% { opacity: 0; } 65% { opacity: 1; } 100% { opacity: 0; } }
+.chispa.g-zap .ch-prong { animation: chProng .7s ease-in-out; }
+@keyframes chProng { 0%, 100% { transform: none; } 25% { transform: rotate(-8deg); } 50% { transform: rotate(7deg); } 75% { transform: rotate(-4deg); } }
+.chispa.g-wink .ch-en .ch-eye:last-child { animation: chWinkOne .5s ease-in-out; }
+@keyframes chWinkOne { 0%, 100% { transform: scaleY(1); } 40%, 60% { transform: scaleY(.1); } }
+.chispa.g-wiggle .ch-root { animation: chWig .9s ease-in-out; }
+@keyframes chWig { 0%, 100% { transform: none; } 20% { transform: rotate(7deg); } 40% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } 80% { transform: rotate(-3deg); } }
+@media (prefers-reduced-motion: reduce) { .chispa *, .chispa .ch-root { animation: none !important; transition: none !important; } }
 .ai-head { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .ai-head .chispa { transition: width .5s var(--spring), height .5s var(--spring); }
 .ai-state { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -446,4 +516,3 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
   box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(0,0,0,.12), 0 10px 24px -10px color-mix(in srgb, var(--lilac) 70%, transparent); }
 .app[data-theme="cristal"][data-mode="light"] .btn:not(.sec):not(.ghost):not(.danger):not(.bnext) { color: #FFFFFF; }
 .app[data-theme="cristal"] .btn { border-radius: 999px; }
-@media (prefers-reduced-motion: reduce) { .chispa .bod, .chispa .eye { animation: none; } }
