@@ -51,7 +51,7 @@ export default function Assistant({ ctx }) {
   const chRef = useRef();
   const gest = (g) => chRef.current && chRef.current.gesture(g);
   // Al abrir: Chispa saluda con un salto y un chispazo
-  useEffect(() => { const t = setTimeout(() => { gest("hop"); setTimeout(() => gest("zap"), 350); }, 350); return () => clearTimeout(t); }, []); // eslint-disable-line
+  useEffect(() => { const t = setTimeout(() => { gest("hop"); setTimeout(() => { gest("zap"); gest("spin"); }, 450); }, 350); return () => clearTimeout(t); }, []); // eslint-disable-line
   const recRef = useRef();
   const endRef = useRef();
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
@@ -124,7 +124,7 @@ export default function Assistant({ ctx }) {
         <button className="icon-btn press" onClick={() => window.speechSynthesis && window.speechSynthesis.cancel()} aria-label="Silenciar"><Icon n="mute" size={18} /></button>
       </div>
       <div className="ai-head in" aria-live="polite">
-        <Chispa ref={chRef} size={msgs.filter((x) => !x.card).length > 1 ? 78 : 118} mood={mood} talking={state === "speak"} sleepAfter={60000} label={"Chispa · " + moodLabel} />
+        <Chispa ref={chRef} size={msgs.filter((x) => !x.card).length > 1 ? 78 : 118} mood={mood} talking={state === "speak"} sleepAfter={60000} roam={44} turn={32} float={8} shadow label={"Chispa · " + moodLabel} />
         <span className="ai-state" style={{ color: moodColor }}>Chispa · {moodLabel}</span>
       </div>
 

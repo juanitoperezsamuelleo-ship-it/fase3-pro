@@ -405,6 +405,11 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
 .app:has(.sheet) .tglass, .app:has(.sheet) .tg-chispa { opacity: 0; pointer-events: none; transform: translateY(20px); }
 
 /* ─────────────── Chispa · estados de ánimo y gestos ─────────────── */
+.chispa-wrap { position: relative; display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.chispa-wrap > .chispa { position: relative; z-index: 1; will-change: transform; transform-origin: 50% 60%; }
+.chispa-wrap.alive .ch-bod { animation: none; }
+.ch-shadow { position: absolute; left: 18%; right: 18%; bottom: -9%; height: 11%; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.5), rgba(0,0,0,0)); pointer-events: none; }
+.app[data-mode="light"] .ch-shadow { background: radial-gradient(closest-side, rgba(30,34,60,.28), rgba(30,34,60,0)); }
 .chispa { display: block; overflow: visible; --eye: #8EF0B9; -webkit-tap-highlight-color: transparent; cursor: pointer; }
 .chispa .ch-root { transform-box: view-box; transform-origin: 80px 138px; transition: transform .45s var(--spring); }
 .chispa .ch-bod { animation: chBob 3.2s ease-in-out infinite; transform-box: view-box; transform-origin: 80px 138px; }
@@ -496,10 +501,11 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
 @keyframes chWig { 0%, 100% { transform: none; } 20% { transform: rotate(7deg); } 40% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } 80% { transform: rotate(-3deg); } }
 @media (prefers-reduced-motion: reduce) { .chispa *, .chispa .ch-root { animation: none !important; transition: none !important; } }
 .ai-head { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.ai-head .chispa { transition: width .5s var(--spring), height .5s var(--spring); }
+.ai-head { padding-bottom: 6px; }
+.ai-head .chispa-wrap { transition: width .5s var(--spring), height .5s var(--spring); }
 .ai-state { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .sayer { display: flex; gap: 10px; align-items: flex-start; }
-.sayer > .chispa { flex-shrink: 0; margin-top: -2px; }
+.sayer > .chispa-wrap { flex-shrink: 0; margin-top: -2px; }
 
 /* ─────────────── Botones de vidrio (iOS 26): se hinchan y brillan donde tocas ─────────────── */
 .app[data-theme="cristal"] .btn, .app[data-theme="cristal"] .icon-btn, .app[data-theme="cristal"] .chip { position: relative; overflow: hidden; }

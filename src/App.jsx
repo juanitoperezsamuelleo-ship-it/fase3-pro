@@ -150,7 +150,7 @@ function NavGlass({ tab, go, mood }) {
         <div ref={lens} className="tg-lens" aria-hidden="true"><div ref={mag} className="tg-mag">{tabs(true)}</div></div>
         <span className="tg-mini" aria-hidden="true">{idx >= 0 && <Icon n={NAV[idx].icon} size={23} />}</span>
       </nav>
-      <button className="tg-chispa icon-btn" onClick={() => go("ai")} aria-label="Abrir a Chispa, el asistente"><Chispa size={42} mood={mood} label="" sleepAfter={120000} /></button>
+      <button className="tg-chispa icon-btn" onClick={() => go("ai")} aria-label="Abrir a Chispa, el asistente"><Chispa size={42} mood={mood} label="" sleepAfter={120000} roam={2.5} turn={24} float={2.5} /></button>
     </>
   );
 }

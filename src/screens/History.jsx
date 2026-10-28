@@ -155,7 +155,7 @@ function EquipmentHistory({ ctx, it }) {
           )}
           {(it.rank >= 1 || diag.length > 0 || (it.dtTrend !== null && it.dtTrend > 0.3)) && (
             <div className="card in sayer" style={{ animationDelay: "200ms" }}>
-              <Chispa size={46} mood={it.rank >= 3 ? "alert" : it.rank >= 2 ? "worry" : "ok"} label="Chispa" sleepAfter={90000} />
+              <Chispa size={46} mood={it.rank >= 3 ? "alert" : it.rank >= 2 ? "worry" : "ok"} label="Chispa" sleepAfter={90000} roam={4} turn={24} float={3} />
               <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
                 <span style={{ fontSize: 14, lineHeight: 1.45 }}>
                   {diag[0] ? <><b>{diag[0].title}.</b> {diag[0].detail}</> : <b>{LEVELS[it.level].label}.</b>}

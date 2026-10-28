@@ -353,16 +353,19 @@ function chAskTilt() {
 }
 const CH_MOOD = { ok: "idle", idle: "idle", listen: "listen", think: "think", talk: "talk", happy: "happy", worry: "worry", alert: "alert" };
 
-export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44, label = "Chispa", style, talking = false, alive = true, sleepAfter = 45000, onClick }, ref) {
+export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44, label = "Chispa", style, talking = false, alive = true, sleepAfter = 45000, onClick, roam = 3, turn = 18, float = 3, shadow = false }, ref) {
   const k = "ch" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
-  const svg = useRef(), gaze = useRef();
+  const svg = useRef(), gaze = useRef(), wrap = useRef(), shade = useRef();
+  // Cuerpo: posición y giro actuales (m.x, m.ry…) y hacia dónde van (m.tx, m.try…); spin = inicio de una vuelta completa
+  const M = useRef({ x: 0, y: 0, ry: 0, rx: 0, tx: 0, ty: 0, try: 0, trx: 0, spin: -1, lastPoint: 0, lastTilt: 0 });
   const base = CH_MOOD[mood] || "idle";
   const [sleeping, setSleeping] = useState(false);
-  const live = useRef({}); live.current = { base, sleeping };
+  const live = useRef({}); live.current = { base, sleeping, talking };
   const lastAct = useRef(Date.now());
   const gesture = useCallback((g) => {
     const el = svg.current;
     if (!el || chReduce()) return;
+    if (g === "spin") { M.current.spin = performance.now(); return; }
     el.classList.remove("g-" + g); void el.getBoundingClientRect(); el.classList.add("g-" + g);
     setTimeout(() => el.classList.remove("g-" + g), g === "tilt" ? 1250 : 900);
   }, []);
@@ -375,14 +378,24 @@ export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44,
     const setGaze = (x, y) => { const s = live.current; if (s.sleeping || s.base === "think" || !gaze.current) return; gaze.current.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`; };
     const sub = {
       point(x, y) {
-        const el = svg.current; if (!el) return;
+        const el = wrap.current; if (!el) return;
         const r = el.getBoundingClientRect(); if (!r.width) return;
         const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height * 0.55), d = Math.hypot(dx, dy) || 1, m = Math.min(1, d / 260);
         lastPoint = Date.now();
         setGaze((dx / d) * 6 * m, (dy / d) * 4.5 * m);
+        const c = (v) => Math.max(-1, Math.min(1, v)), nx = c(dx / 220), ny = c(dy / 260), B = M.current;
+        // hacia abajo se mueve poco para no tapar lo que hay debajo
+        if (!live.current.sleeping) { B.tx = nx * roam; B.ty = ny * roam * (ny > 0 ? 0.18 : 0.5); B.try = nx * turn; B.trx = -ny * turn * 0.6; }
+        B.lastPoint = performance.now();
         if (Date.now() - lastAct.current > 800) wake(); else lastAct.current = Date.now();
       },
-      tilt(x, y) { if (Date.now() - lastPoint < 1500) return; setGaze(x * 6, y * 4.5); }
+      tilt(x, y) {
+        if (Date.now() - lastPoint < 1500) return;
+        setGaze(x * 6, y * 4.5);
+        const B = M.current;
+        if (!live.current.sleeping) { B.tx = x * roam * 0.6; B.ty = y * roam * 0.3; B.try = x * turn; B.trx = -y * turn * 0.5; }
+        B.lastTilt = performance.now();
+      }
     };
     CH.subs.add(sub);
     let next = Date.now() + 2500;
@@ -395,17 +408,42 @@ export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44,
       if (r < 0.4 && now - lastPoint > 1500 && gaze.current) {
         gaze.current.style.transform = `translate(${Math.random() < 0.5 ? -6 : 6}px,${(Math.random() * 4 - 2).toFixed(1)}px)`;
         setTimeout(() => { if (gaze.current && Date.now() - lastPoint > 1500) gaze.current.style.transform = ""; }, 900);
-      } else if (r < 0.65) gesture("zap");
-      else if (r < 0.78) gesture("tilt");
+      } else if (r < 0.62) gesture("zap");
+      else if (r < 0.74) gesture("tilt");
+      else if (r < 0.8) gesture("spin");
       next = now + 3500 + Math.random() * 4500;
     }, 700);
-    return () => { CH.subs.delete(sub); clearInterval(iv); };
-  }, [alive, sleepAfter, gesture]); // eslint-disable-line
+    // Flotar y seguir con el cuerpo: se mueve suave, se inclina al desplazarse y a veces da una vuelta
+    let raf = 0;
+    const t0 = performance.now();
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop);
+      if (document.hidden || !svg.current) return;
+      const B = M.current, s = live.current, t = (now - t0) / 1000;
+      if (now - B.lastPoint > 2500 && now - B.lastTilt > 700) { B.tx = B.ty = B.try = B.trx = 0; }
+      const px = B.x, kk = 0.07;
+      B.x += (B.tx - B.x) * kk; B.y += (B.ty - B.y) * kk; B.ry += (B.try - B.ry) * kk; B.rx += (B.trx - B.rx) * kk;
+      const vx = B.x - px;
+      const fa = s.sleeping ? float * 0.4 : s.talking ? float * 1.2 : float;
+      const sp = s.sleeping ? 0.5 : s.talking ? 1.9 : 1;
+      const fy = Math.sin(t * 1.25 * sp) * fa, fx = Math.sin(t * 0.62 * sp) * fa * 0.9;
+      const rz = Math.sin(t * 0.85) * 2.5 + vx * 1.6;
+      let spin = 0;
+      if (B.spin >= 0) { const p = (now - B.spin) / 950; if (p >= 1) B.spin = -1; else spin = (1 - Math.pow(1 - p, 3)) * 360; }
+      svg.current.style.transform = `translate3d(${(B.x + fx).toFixed(2)}px,${(B.y + fy).toFixed(2)}px,0) rotateY(${(B.ry + spin).toFixed(2)}deg) rotateX(${B.rx.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
+      if (shade.current) { const lift = fa ? (fa - fy) / (2 * fa) : 0; shade.current.style.transform = `translateX(${(B.x + fx).toFixed(1)}px) scale(${(1 - lift * 0.3).toFixed(3)})`; shade.current.style.opacity = (0.9 - lift * 0.45).toFixed(2); }
+    };
+    raf = requestAnimationFrame(loop);
+    return () => { CH.subs.delete(sub); clearInterval(iv); cancelAnimationFrame(raf); };
+  }, [alive, sleepAfter, gesture, roam, turn, float]); // eslint-disable-line
   useEffect(() => { if (base !== "idle" && base !== "happy") { lastAct.current = Date.now(); setSleeping(false); } }, [base]);
   const state = sleeping ? "sleep" : base;
-  const tap = (e) => { chAskTilt(); wake(); gesture(Math.random() < 0.5 ? "tap" : "hop"); setTimeout(() => gesture("zap"), 250); if (onClick) onClick(e); };
+  const tap = (e) => { chAskTilt(); wake(); const r = Math.random(); gesture(r < 0.35 ? "tap" : r < 0.7 ? "hop" : "spin"); setTimeout(() => gesture("zap"), 250); if (onClick) onClick(e); };
+  const moving = alive && !chReduce();
   return (
-    <svg ref={svg} className={"chispa" + (talking ? " talking" : "")} data-s={state} viewBox="0 0 160 150" width={size} height={size * 0.94} role="img" aria-label={label || undefined} aria-hidden={label ? undefined : true} style={style} onClick={tap}>
+    <span ref={wrap} className={"chispa-wrap" + (moving ? " alive" : "")} style={{ width: size, height: size * 0.94, perspective: Math.round(size * 7) + "px", ...style }}>
+    {shadow && <span ref={shade} className="ch-shadow" aria-hidden="true" />}
+    <svg ref={svg} className={"chispa" + (talking ? " talking" : "")} data-s={state} viewBox="0 0 160 150" width="100%" height="100%" role="img" aria-label={label || undefined} aria-hidden={label ? undefined : true} onClick={tap}>
       <defs>
         <linearGradient id={k + "b"} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FFD29A" stopOpacity=".95" /><stop offset=".55" stopColor="#FFAE63" stopOpacity=".88" /><stop offset="1" stopColor="#F0873A" stopOpacity=".82" /></linearGradient>
         <radialGradient id={k + "s"} cx=".3" cy=".18" r=".55"><stop offset="0" stopColor="#fff" stopOpacity=".85" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
@@ -439,5 +477,6 @@ export const Chispa = React.forwardRef(function Chispa({ mood = "ok", size = 44,
         <rect x="46" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" /><rect x="96" y="126" width="18" height="12" rx="6" fill="rgba(30,32,40,.9)" />
       </g></g>
     </svg>
+    </span>
   );
 });
