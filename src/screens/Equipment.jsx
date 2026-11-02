@@ -139,12 +139,17 @@ export default function Equipment({ ctx }) {
   const types = TYPE_ORDER.filter((t) => items.some((i) => i.eq.type === t));
   const it = sel && items.find((i) => i.eq.id === sel);
 
+  // Borra el equipo y todas sus lecturas (solo el administrador)
   const del = async () => {
-    const eq = it.eq;
+    const eq = it.eq, rs = it.readings;
     setSel(null); setConfirm(false);
-    for (const r of it.readings) { (r.photoIds || []).forEach((p) => store.removePhoto(p)); await store.remove("readings", r.id); }
-    await store.remove("equipment", eq.id);
-    toast("Equipo eliminado");
+    try {
+      rs.forEach((r) => (r.photoIds || []).forEach((p) => store.removePhoto(p)));
+      if (store.removeMany) await store.removeMany("readings", rs.map((r) => r.id));
+      else for (const r of rs) await store.remove("readings", r.id);
+      await store.remove("equipment", eq.id);
+      toast(`${eq.name.split(" · ")[0]} eliminado${rs.length ? ` con ${rs.length} ${rs.length === 1 ? "lectura" : "lecturas"}` : ""}`);
+    } catch (e) { toast("No se pudo eliminar: " + (e.code === "permission-denied" ? "la base de datos no lo permite para tu usuario" : e.message), "bad"); }
   };
 
   return (
@@ -217,9 +222,16 @@ export default function Equipment({ ctx }) {
             {isAdmin && (
               <div className="row" style={{ gap: 8 }}>
                 <button className="btn ghost press" style={{ flex: 1, height: 44 }} onClick={() => { setForm({ ...it.eq }); setSel(null); }}><Icon n="edit" size={17} /> Editar</button>
-                {ctx.canManage && (!confirm
-                  ? <button className="btn ghost press" style={{ flex: 1, height: 44, color: "var(--on-bad)" }} onClick={() => setConfirm(true)}><Icon n="trash" size={17} /> Eliminar</button>
-                  : <button className="btn danger press fade" style={{ flex: 1, height: 44 }} onClick={del}>Confirmar ({it.readings.length} lecturas)</button>)}
+                {!confirm && <button className="btn ghost press" style={{ flex: 1, height: 44, color: "var(--on-bad)" }} onClick={() => setConfirm(true)}><Icon n="trash" size={17} /> Eliminar</button>}
+              </div>
+            )}
+            {isAdmin && confirm && (
+              <div className="card fade" style={{ background: "var(--tint-bad)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 14 }}>Se borra <b>{it.eq.name}</b>{it.readings.length ? <> y sus <b>{it.readings.length} {it.readings.length === 1 ? "lectura" : "lecturas"}</b></> : null}, también en la app inicial. No se puede deshacer.</span>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn sec press" style={{ flex: 1, height: 44 }} onClick={() => setConfirm(false)}>Cancelar</button>
+                  <button className="btn danger press" style={{ flex: 1, height: 44 }} onClick={del}><Icon n="trash" size={17} /> Sí, eliminar</button>
+                </div>
               </div>
             )}
           </>

@@ -278,9 +278,19 @@ async function createLegacyStore() {
       await Promise.race([fs.updateDoc(fs.doc(db, "readings", id), patch), t]);
       (data.photoIds || []).forEach((pid) => delete pending[pid]);
     },
+    // Borrar: lecturas, registros del analizador, plantas, CCM y equipos (solo el administrador; lo exigen también las reglas)
     async remove(col, id) {
-      if (!["readings", "plants", "ccms", "pq"].includes(col)) return ro();
+      if (!["readings", "plants", "ccms", "pq", "equipment"].includes(col)) return ro();
       await fs.deleteDoc(fs.doc(db, COLNAME[col] || col, id));
+    },
+    // Borrar muchos de una vez (en lotes de 400, lo que permite Firestore)
+    async removeMany(col, ids) {
+      if (!["readings", "pq"].includes(col)) return ro();
+      for (let i = 0; i < ids.length; i += 400) {
+        const b = fs.writeBatch(db);
+        ids.slice(i, i + 400).forEach((id) => b.delete(fs.doc(db, COLNAME[col] || col, id)));
+        await b.commit();
+      }
     },
     subSettings(cb) {
       return fs.onSnapshot(fs.doc(db, "settings", "thresholds"), (s) => cb(s.exists() ? { thresholds: s.data() } : {}), () => cb({}));

@@ -38,10 +38,12 @@ function Detail({ ctx, r, it, onClose }) {
   const ev = evaluate(it.eq.type, r.values || {}, th, it.eq.plate || {});
   const canEdit = isAdmin || (!ctx.readOnly && r.userId === session.uid);
   const del = async () => {
-    (r.photoIds || []).forEach((p) => store.removePhoto(p));
-    await store.remove("readings", r.id);
-    toast("Lectura eliminada");
-    onClose();
+    try {
+      (r.photoIds || []).forEach((p) => store.removePhoto(p));
+      await store.remove("readings", r.id);
+      toast("Lectura eliminada");
+      onClose();
+    } catch (e) { toast("No se pudo eliminar: " + (e.code === "permission-denied" ? "la base de datos no lo permite para tu usuario" : e.message), "bad"); }
   };
   return (
     <>
@@ -113,6 +115,21 @@ function EquipmentHistory({ ctx, it }) {
   };
   const [sel, setSel] = useState(null);
   const rs = it.readings;
+  // Administrador: seleccionar varias lecturas y borrarlas de una vez
+  const toast = useToast();
+  const [pick, setPick] = useState(null); // null = modo normal; Set = ids elegidos
+  const [sure, setSure] = useState(false);
+  const togglePick = (id) => { const n = new Set(pick); n.has(id) ? n.delete(id) : n.add(id); setPick(n); setSure(false); };
+  const delPicked = async () => {
+    const ids = [...pick];
+    try {
+      rs.filter((r) => pick.has(r.id)).forEach((r) => (r.photoIds || []).forEach((p) => ctx.store.removePhoto(p)));
+      if (ctx.store.removeMany) await ctx.store.removeMany("readings", ids);
+      else for (const id of ids) await ctx.store.remove("readings", id);
+      toast(`${ids.length} ${ids.length === 1 ? "lectura eliminada" : "lecturas eliminadas"}`);
+      setPick(null); setSure(false);
+    } catch (e) { toast("No se pudo eliminar: " + (e.code === "permission-denied" ? "la base de datos no lo permite para tu usuario" : e.message), "bad"); }
+  };
   const labels = rs.map((r) => fmtShort(r.date));
   const V = (k) => rs.map((r) => num(r.values && r.values[k]));
   const E = it.T.evalKeys;
@@ -203,10 +220,21 @@ function EquipmentHistory({ ctx, it }) {
 
       {tab === "rec" && (
         <div>
+          {ctx.isAdmin && rs.length > 0 && (
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+              <span className="muted" style={{ fontSize: 12 }}>{pick ? `${pick.size} de ${rs.length} elegidas` : `${rs.length} ${rs.length === 1 ? "lectura" : "lecturas"}`}</span>
+              <div className="row" style={{ gap: 6 }}>
+                {pick && <button className="chip press" onClick={() => { setPick(pick.size === rs.length ? new Set() : new Set(rs.map((r) => r.id))); setSure(false); }}>{pick.size === rs.length ? "Ninguna" : "Todas"}</button>}
+                <button className="chip press" onClick={() => { setPick(pick ? null : new Set()); setSure(false); }}>{pick ? "Cancelar" : "Seleccionar para borrar"}</button>
+              </div>
+            </div>
+          )}
           {rs.slice().reverse().map((r, k) => {
             const ev = evaluate(it.eq.type, r.values || {}, th, it.eq.plate || {});
+            const on = pick && pick.has(r.id);
             return (
-              <button key={r.id} className="hotrow in" style={{ gridTemplateColumns: "minmax(0,1fr) auto auto", animationDelay: 60 + Math.min(k, 10) * 40 + "ms" }} onClick={() => setSel(r.id)}>
+              <button key={r.id} className="hotrow in" aria-pressed={pick ? !!on : undefined} style={{ gridTemplateColumns: pick ? "26px minmax(0,1fr) auto auto" : "minmax(0,1fr) auto auto", animationDelay: 60 + Math.min(k, 10) * 40 + "ms", boxShadow: on ? "inset 0 0 0 1.5px var(--on-bad)" : undefined }} onClick={() => (pick ? togglePick(r.id) : setSel(r.id))}>
+                {pick && <span style={{ width: 22, height: 22, borderRadius: 11, display: "grid", placeItems: "center", background: on ? "var(--crit)" : "transparent", boxShadow: on ? "none" : "inset 0 0 0 1.5px var(--muted)", color: "#fff" }}>{on && <Icon n="check" size={14} w={3} />}</span>}
                 <span className="sev" style={{ width: 3, background: LEVELS[ev.worst].color }} />
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 700, fontSize: 14 }}>{fmtDate(r.date)}</span>
@@ -217,6 +245,14 @@ function EquipmentHistory({ ctx, it }) {
               </button>
             );
           })}
+          {pick && pick.size > 0 && (
+            <div className="card fade" style={{ position: "sticky", bottom: 92, zIndex: 5, background: "color-mix(in srgb, var(--crit) 20%, var(--bg))", boxShadow: "0 14px 34px -10px rgba(0,0,0,.6), inset 0 0 0 1px color-mix(in srgb, var(--crit) 45%, transparent)", display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+              {sure && <span style={{ fontSize: 14 }}>Se borran <b>{pick.size} {pick.size === 1 ? "lectura" : "lecturas"}</b> de {it.eq.name.split(" · ")[0]}, también en la app inicial. No se puede deshacer.</span>}
+              {!sure
+                ? <button className="btn danger press" style={{ height: 46 }} onClick={() => setSure(true)}><Icon n="trash" size={17} /> Eliminar {pick.size} {pick.size === 1 ? "lectura" : "lecturas"}</button>
+                : <div className="row" style={{ gap: 8 }}><button className="btn sec press" style={{ flex: 1, height: 44 }} onClick={() => setSure(false)}>No</button><button className="btn danger press" style={{ flex: 1, height: 44 }} onClick={delPicked}>Sí, eliminar</button></div>}
+            </div>
+          )}
         </div>
       )}
 
