@@ -181,9 +181,11 @@ function smooth(pts) {
 }
 
 /* ───────── Gráfica de líneas ───────── */
-export function LineChart({ series, labels, unit, height = 170, bands, delay = 0 }) {
+const fmtVal = (v) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(Math.abs(v) >= 100 ? 0 : 1).replace(".", ","));
+export function LineChart({ series, labels, unit, height = 170, bands, delay = 0, values: showValues = true }) {
   const gid = React.useId().replace(/:/g, "");
-  const W = 340, H = height, pl = 30, pr = 8, pt = 10, pb = 22;
+  const [hover, setHover] = useState(null); // índice de la lectura que se está mirando
+  const W = 340, H = height, pl = 30, pr = showValues ? 40 : 8, pt = 10, pb = 22;
   const all = series.flatMap((s) => s.values).filter((x) => x !== null && Number.isFinite(x));
   if (!all.length || labels.length < 1) return <div className="muted" style={{ fontSize: 13, padding: 12 }}>Sin datos suficientes.</div>;
   let mn = Math.min(...all), mx = Math.max(...all);
@@ -196,10 +198,35 @@ export function LineChart({ series, labels, unit, height = 170, bands, delay = 0
   const Y = (y) => pt + (1 - (y - mn) / (mx - mn)) * (H - pt - pb);
   const ticks = [mn + (mx - mn) * 0.1, (mn + mx) / 2, mx - (mx - mn) * 0.1];
   const step = Math.max(1, Math.ceil(n / 5));
+  // Valor de la última lectura junto a cada línea, separando las etiquetas para que no se encimen
+  const tags = series.map((s, si) => {
+    let k = s.values.length - 1; while (k >= 0 && !(s.values[k] !== null && Number.isFinite(s.values[k]))) k--;
+    return k < 0 ? null : { si, k, v: s.values[k], y: Y(s.values[k]), c: s.color };
+  }).filter(Boolean).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < tags.length; i++) if (tags[i].y - tags[i - 1].y < 11) tags[i].y = tags[i - 1].y + 11;
+  const over = tags.length ? tags[tags.length - 1].y - (H - pb) : 0;
+  if (over > 0) tags.forEach((t) => (t.y -= over));
+  // Tocar o deslizar sobre la gráfica: fecha y valores de esa lectura
+  const pick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * W;
+    const k = n === 1 ? 0 : Math.round(((x - pl) / (W - pl - pr)) * (n - 1));
+    setHover(Math.max(0, Math.min(n - 1, k)));
+  };
+  const tip = hover === null ? null : (() => {
+    const rows = series.map((s) => ({ n: s.name, c: s.color, v: s.values[hover] })).filter((r) => r.v !== null && r.v !== undefined && Number.isFinite(r.v));
+    const bw = 96, bh = 16 + rows.length * 13, hx = X(hover);
+    const bx = hx + 8 + bw > W - 2 ? hx - 8 - bw : hx + 8;
+    return { rows, bw, bh, hx, bx };
+  })();
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={series.map((s) => s.name).join(", ")}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={series.map((s) => s.name).join(", ")}
+      style={{ touchAction: "pan-y", cursor: "crosshair" }}
+      onPointerDown={pick} onPointerMove={(e) => { if (e.pointerType === "mouse" || e.buttons) pick(e); }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }}
+      onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
       {ticks.map((t, k) => (
-        <g key={k}><line className="gridl" x1={pl} x2={W - pr} y1={Y(t)} y2={Y(t)} style={{ stroke: "var(--line)", animationDelay: delay + k * 50 + "ms" }} /><text x={pl - 5} y={Y(t) + 3} textAnchor="end" fontSize="9" style={{ fill: "var(--muted)" }} fontFamily="JetBrains Mono">{t.toFixed(Math.abs(mx - mn) < 10 ? 1 : 0)}</text></g>
+        <g key={k}><line className="gridl" x1={pl} x2={W - pr} y1={Y(t)} y2={Y(t)} style={{ stroke: "var(--line)", animationDelay: delay + k * 50 + "ms" }} /><text x={pl - 5} y={Y(t) + 3} textAnchor="end" fontSize="9" style={{ fill: "var(--muted)" }} fontFamily="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace">{t.toFixed(Math.abs(mx - mn) < 10 ? 1 : 0)}</text></g>
       ))}
       {bands && bands.filter((b) => b.y > mn && b.y < mx).map((b, k) => (
         <g key={"b" + k} className="bandl" style={{ animationDelay: delay + 500 + k * 90 + "ms" }}><line x1={pl} x2={W - pr} y1={Y(b.y)} y2={Y(b.y)} stroke={b.color} strokeDasharray="4 4" opacity=".7" /><text x={W - pr} y={Y(b.y) - 3} textAnchor="end" fontSize="9" fill={b.color}>{b.label}</text></g>
@@ -229,6 +256,25 @@ export function LineChart({ series, labels, unit, height = 170, bands, delay = 0
           </g>
         );
       })}
+      {showValues && hover === null && tags.map((t) => (
+        <text key={"v" + t.si} className="vtag" x={W - pr + 5} y={t.y + 3.5} fontSize="10" fontWeight="600" fontFamily="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" fill={t.c}
+          style={{ paintOrder: "stroke", stroke: "var(--bg)", strokeWidth: 3, strokeLinejoin: "round", animationDelay: delay + 1100 + "ms" }}>{fmtVal(t.v)}</text>
+      ))}
+      {tip && (
+        <g pointerEvents="none">
+          <line x1={tip.hx} x2={tip.hx} y1={pt} y2={H - pb} stroke="var(--text)" strokeOpacity=".35" strokeDasharray="3 3" />
+          {series.map((s, si) => { const v = s.values[hover]; return v === null || !Number.isFinite(v) ? null : <circle key={si} cx={tip.hx} cy={Y(v)} r="4.5" fill={s.color} stroke="var(--bg)" strokeWidth="2" />; })}
+          <rect x={tip.bx} y={pt} width={tip.bw} height={tip.bh} rx="8" style={{ fill: "var(--bg)", stroke: "var(--line)" }} opacity=".94" />
+          <text x={tip.bx + 8} y={pt + 12} fontSize="9.5" fontWeight="700" style={{ fill: "var(--muted)" }}>{labels[hover]}</text>
+          {tip.rows.map((r, i) => (
+            <g key={i}>
+              <circle cx={tip.bx + 11} cy={pt + 22 + i * 13} r="3" fill={r.c} />
+              <text x={tip.bx + 18} y={pt + 25.5 + i * 13} fontSize="10" style={{ fill: "var(--text)" }}>{r.n}</text>
+              <text x={tip.bx + tip.bw - 8} y={pt + 25.5 + i * 13} fontSize="10" fontWeight="700" fontFamily="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" textAnchor="end" style={{ fill: "var(--text)" }}>{fmtVal(r.v)}{unit ? " " + unit : ""}</text>
+            </g>
+          ))}
+        </g>
+      )}
       {unit && <text x={4} y={10} fontSize="9" style={{ fill: "var(--muted)" }}>{unit}</text>}
     </svg>
   );

@@ -522,3 +522,8 @@ select option, select optgroup { background-color: #1B1C21; color: #F3F1EC; }
   box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(0,0,0,.12), 0 10px 24px -10px color-mix(in srgb, var(--lilac) 70%, transparent); }
 .app[data-theme="cristal"][data-mode="light"] .btn:not(.sec):not(.ghost):not(.danger):not(.bnext) { color: #FFFFFF; }
 .app[data-theme="cristal"] .btn { border-radius: 999px; }
+
+/* Valor de la última lectura en las gráficas */
+.vtag { animation: vtagIn .5s var(--out) both; }
+@keyframes vtagIn { from { opacity: 0; transform: translateX(-4px); } }
+@media (prefers-reduced-motion: reduce) { .vtag { animation: none; } }
