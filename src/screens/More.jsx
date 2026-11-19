@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { DEFAULT_THRESHOLDS, LEVELS, localDay } from "../lib/calc.js";
 import { htmlReport, openHtml, excelReport, scopeData } from "../lib/reports.js";
-import { getAIConfig, setAIConfig, speak, testGemini } from "../lib/ai.js";
+import { getAIConfig, setAIConfig, speak, testGemini, VOICES, bestDeviceVoice } from "../lib/ai.js";
 import { Icon, Header, Field, Stepper, Seg, useToast, Pill, Empty } from "../ui.jsx";
 
 const MENU = [
@@ -113,6 +113,7 @@ function AISettings() {
   const [c, setC] = useState(getAIConfig());
   const [show, setShow] = useState(false);
   const [test, setTest] = useState("");
+  const [say, setSay] = useState("");
   const save = (n) => { setC(n); setAIConfig(n); };
   return (
     <>
@@ -133,9 +134,31 @@ function AISettings() {
         {test && test !== "…" && <p className="fade" style={{ fontSize: 13, color: test.startsWith("✓") ? "var(--ok)" : "var(--on-bad)" }}>{test}</p>}
         {c.model && <p className="muted mono" style={{ fontSize: 11 }}>Modelo: {c.model} (se elige solo)</p>}
       </div>
-      <div className="card in row" style={{ justifyContent: "space-between", animationDelay: "80ms" }}>
-        <span style={{ fontSize: 14 }}><b>Respuestas por voz</b><br /><span className="muted" style={{ fontSize: 12 }}>El asistente lee sus respuestas</span></span>
-        <Seg options={[{ v: true, l: "Sí" }, { v: false, l: "No" }]} value={c.voice} onChange={(v) => { save({ ...c, voice: v }); if (v) setTimeout(() => speak("Voz activada."), 50); toast(v ? "Voz activada" : "Voz desactivada"); }} />
+      <div className="card in" style={{ display: "flex", flexDirection: "column", gap: 12, animationDelay: "80ms" }}>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span style={{ fontSize: 14 }}><b>Voz de Chispa</b><br /><span className="muted" style={{ fontSize: 12 }}>Chispa lee sus respuestas en voz alta</span></span>
+          <Seg options={[{ v: true, l: "Sí" }, { v: false, l: "No" }]} value={c.voice} onChange={(v) => { save({ ...c, voice: v }); toast(v ? "Voz activada" : "Voz desactivada"); }} />
+        </div>
+        {c.voice && (
+          <>
+            <Seg options={[{ v: "natural", l: "Natural (Google)" }, { v: "device", l: "Del celular" }]} value={c.voiceMode === "device" ? "device" : "natural"} onChange={(v) => save({ ...c, voiceMode: v })} />
+            {c.voiceMode !== "device" && (
+              <>
+                <span className="muted" style={{ fontSize: 12 }}>{c.apiKey ? "Voz humana generada por Google con tu clave de Gemini. Necesita internet; sin conexión usa la voz del celular." : "Para la voz natural pega arriba tu clave de Gemini. Mientras tanto se usa la voz del celular."}</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="Voz">
+                  {VOICES.map((v) => (
+                    <button key={v.id} role="radio" aria-checked={(c.voiceName || "Sulafat") === v.id} className={"chip press" + ((c.voiceName || "Sulafat") === v.id ? " on" : "")}
+                      onClick={() => { const n = { ...c, voiceName: v.id }; save(n); }}>{v.l}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {c.voiceMode === "device" && <span className="muted" style={{ fontSize: 12 }}>Usa la mejor voz en español instalada en el celular{bestDeviceVoice() ? `: ${bestDeviceVoice().name}` : ""}.</span>}
+            <button className="btn sec press" disabled={say === "…"} onClick={async () => { setSay("…"); try { await speak("Hola, soy Chispa. El M-114 tiene un ΔT de 12,3 °C y sigue subiendo; te recomiendo revisarlo en la próxima parada.", { force: true }); } finally { setSay(""); } }}>
+              {say === "…" ? "Hablando…" : "▶ Probar voz"}
+            </button>
+          </>
+        )}
       </div>
     </>
   );

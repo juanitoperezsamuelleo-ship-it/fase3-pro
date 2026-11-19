@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { daySummary, localAnswer, askGemini, askWithImage, hasGemini, speak, listen, canListen, diagnoseItem } from "../lib/ai.js";
+import { daySummary, localAnswer, askGemini, askWithImage, hasGemini, speak, stopSpeaking, listen, canListen, diagnoseItem } from "../lib/ai.js";
 import { compressImage } from "../lib/image.js";
 import { LEVELS, fmt, fmtShort } from "../lib/calc.js";
 import { Icon, Chispa, Pill, LineChart } from "../ui.jsx";
@@ -55,7 +55,7 @@ export default function Assistant({ ctx }) {
   const recRef = useRef();
   const endRef = useRef();
   useEffect(() => { endRef.current && endRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
-  useEffect(() => () => { window.speechSynthesis && window.speechSynthesis.cancel(); recRef.current && recRef.current.abort && recRef.current.abort(); }, []);
+  useEffect(() => () => { stopSpeaking(); recRef.current && recRef.current.abort && recRef.current.abort(); }, []);
 
   const [img, setImg] = useState(null);
   const fileRef = useRef();
@@ -101,7 +101,7 @@ export default function Assistant({ ctx }) {
 
   const mic = () => {
     if (state === "listen") { recRef.current && recRef.current.stop(); return; }
-    window.speechSynthesis && window.speechSynthesis.cancel();
+    stopSpeaking();
     setState("listen");
     let final = "";
     recRef.current = listen((t, isFinal) => { setQ(t); if (isFinal) final = t; }, () => { setState("idle"); if (final) ask(final); });
@@ -121,7 +121,7 @@ export default function Assistant({ ctx }) {
       <div className="hdr in">
         <button className="icon-btn press" onClick={() => go(eqIt ? "hist" : "home", eqIt ? { eqId: eqIt.eq.id } : {})} aria-label="Volver"><Icon n="back" /></button>
         <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>{hasGemini() ? "Chispa · IA local + Gemini" : "Chispa · IA local, sin costo"}</span>
-        <button className="icon-btn press" onClick={() => window.speechSynthesis && window.speechSynthesis.cancel()} aria-label="Silenciar"><Icon n="mute" size={18} /></button>
+        <button className="icon-btn press" onClick={() => stopSpeaking()} aria-label="Silenciar"><Icon n="mute" size={18} /></button>
       </div>
       <div className="ai-head in" aria-live="polite">
         <Chispa ref={chRef} size={msgs.filter((x) => !x.card).length > 1 ? 78 : 118} mood={mood} talking={state === "speak"} sleepAfter={60000} roam={44} turn={32} float={8} shadow label={"Chispa · " + moodLabel} />

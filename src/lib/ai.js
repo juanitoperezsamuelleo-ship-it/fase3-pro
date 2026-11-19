@@ -276,16 +276,115 @@ export async function aiReview(type, values, prev, plate) {
   return gemini([{ text: `${ROLE}\n\nRevisa esta lectura de un ${TYPES[type].label} antes de guardarla. Placa: ${JSON.stringify(plate || {})}. Lectura: ${JSON.stringify(values)}. Anterior: ${JSON.stringify(prev ? prev.values : null)}. Señala posibles errores de digitación y hallazgos. Máximo 4 frases, sin markdown.` }]);
 }
 
-/* ───────── Voz (Web Speech API, gratis en el navegador) ───────── */
-export function speak(text) {
-  if (!("speechSynthesis" in window) || !getAIConfig().voice) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text.replace(/·/g, ","));
-  u.lang = "es-ES";
-  const v = window.speechSynthesis.getVoices().find((x) => x.lang && x.lang.startsWith("es"));
-  if (v) u.voice = v;
-  u.rate = 1.03;
-  window.speechSynthesis.speak(u);
+/* ───────── Voz de Chispa ─────────
+   1) Voz natural de Google (Gemini TTS) con la misma clave de Gemini: suena humana.
+   2) Si no hay clave, internet o cupo: la mejor voz en español del dispositivo. */
+export const VOICES = [
+  { id: "Sulafat", l: "Cálida" }, { id: "Achird", l: "Amigable" }, { id: "Aoede", l: "Fresca" }, { id: "Kore", l: "Firme" },
+  { id: "Puck", l: "Animada" }, { id: "Charon", l: "Informativa" }, { id: "Leda", l: "Juvenil" }, { id: "Algenib", l: "Grave" }
+];
+const STYLE = "Habla en español latinoamericano, con voz cálida, natural y cercana, como un compañero técnico que explica con calma. Ritmo conversacional, sin sonar robótico.";
+// Texto para hablar: sin símbolos que la voz lee mal
+function speechText(t) {
+  return String(t || "")
+    .replace(/[*_#`>]/g, "").replace(/·/g, ",").replace(/ΔT/g, "delta T").replace(/Δ/g, "delta ")
+    .replace(/(\d),(\d)/g, "$1 coma $2").replace(/°\s?C/g, " grados").replace(/°/g, " grados")
+    .replace(/\/m\b/g, " por mes").replace(/~\s?/g, "unos ").replace(/±/g, "más o menos ").replace(/\s+/g, " ").trim().slice(0, 900);
+}
+let actx = null, current = null, ttsModel = null, styleOk = true;
+const audioCache = new Map();
+function ctx() {
+  const C = window.AudioContext || window.webkitAudioContext;
+  if (!actx && C) actx = new C();
+  return actx;
+}
+// iPhone exige que el audio se "desbloquee" con un toque; se hace en el primer toque de la app
+export function unlockAudio() { const c = ctx(); if (c && c.state === "suspended") c.resume().catch(() => {}); }
+if (typeof window !== "undefined") window.addEventListener("pointerdown", unlockAudio, { capture: true, passive: true });
+
+export function stopSpeaking() {
+  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) { /* */ }
+  if (current) { try { current.stop(); } catch (e) { /* */ } current = null; }
+}
+async function pickTTS(apiKey) {
+  if (ttsModel) return ttsModel;
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`);
+  const d = await r.json().catch(() => ({}));
+  const names = (d.models || []).map((m) => m.name.replace("models/", "")).filter((n) => /tts/i.test(n) && /flash/i.test(n));
+  if (!names.length) throw new Error("Sin modelo de voz");
+  const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [0, 0])[1]);
+  names.sort((a, b) => (a.includes("lite") ? 1 : 0) - (b.includes("lite") ? 1 : 0) || (a.includes("preview") ? 1 : 0) - (b.includes("preview") ? 1 : 0) || ver(b) - ver(a));
+  ttsModel = names[0];
+  return ttsModel;
+}
+function b64bytes(b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function toBuffer(bytes, mime) {
+  const c = ctx();
+  const isWav = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46; // "RIFF"
+  if (isWav) return await c.decodeAudioData(bytes.buffer.slice(0));
+  // PCM 16 bits sin cabecera (24 kHz por defecto)
+  const rate = parseInt((String(mime).match(/rate=(\d+)/) || [0, 24000])[1], 10);
+  const n = bytes.length >> 1, buf = c.createBuffer(1, n, rate), ch = buf.getChannelData(0), dv = new DataView(bytes.buffer);
+  for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
+  return buf;
+}
+async function naturalVoice(text, voice) {
+  const { apiKey } = getAIConfig();
+  const key = voice + "|" + text;
+  let buf = audioCache.get(key);
+  if (!buf) {
+    const model = await pickTTS(apiKey);
+    const body = (withStyle, oldForm) => JSON.stringify({
+      contents: [{ role: "user", parts: [{ text, ...(withStyle ? { speechMetadata: { style: STYLE } } : {}) }] }],
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: oldForm ? { prebuiltVoiceConfig: { voiceName: voice } } : { voice } } }
+    });
+    let res = null;
+    // Prueba la forma nueva con estilo; si Google no la acepta, va probando formas más simples
+    for (const [st, old] of [[styleOk, false], [false, false], [false, true]]) {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: body(st, old) });
+      if (res.ok) break;
+      if (res.status !== 400) break;
+      if (st) styleOk = false;
+    }
+    if (!res || !res.ok) throw new Error("voz " + (res && res.status));
+    const data = await res.json();
+    const part = ((data.candidates || [])[0]?.content?.parts || []).find((p) => p.inlineData);
+    if (!part) throw new Error("sin audio");
+    buf = await toBuffer(b64bytes(part.inlineData.data), part.inlineData.mimeType);
+    if (audioCache.size > 30) audioCache.delete(audioCache.keys().next().value);
+    audioCache.set(key, buf);
+  }
+  const c = ctx();
+  if (c.state === "suspended") await c.resume().catch(() => {});
+  stopSpeaking();
+  const src = c.createBufferSource(); src.buffer = buf; src.connect(c.destination); src.start(); current = src;
+  return new Promise((r) => { src.onended = () => { if (current === src) current = null; r(); }; });
+}
+// Mejor voz del dispositivo: primero las "naturales" y en español latino
+export function bestDeviceVoice() {
+  const vs = ("speechSynthesis" in window ? window.speechSynthesis.getVoices() : []).filter((v) => /^es/i.test(v.lang));
+  const score = (v) => (/natural|neural|online|enhanced|premium|siri/i.test(v.name) ? 10 : 0) + (/google/i.test(v.name) ? 6 : 0)
+    + (/es[-_](CO|419|MX|US|AR|CL|PE)/i.test(v.lang) ? 4 : 0) + (/salome|gonzalo|dalia|jorge|paulina|m[oó]nica|sabina|elvira/i.test(v.name) ? 3 : 0) - (v.localService === false ? 0 : 0);
+  return vs.sort((a, b) => score(b) - score(a))[0] || null;
+}
+function deviceVoice(text) {
+  if (!("speechSynthesis" in window)) return Promise.resolve();
+  stopSpeaking();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = bestDeviceVoice();
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-419";
+  u.rate = 1.0; u.pitch = 1.05;
+  return new Promise((r) => { u.onend = r; u.onerror = r; window.speechSynthesis.speak(u); });
+}
+export async function speak(text, { force = false } = {}) {
+  const cfg = getAIConfig();
+  if (!cfg.voice && !force) return;
+  const t = speechText(text);
+  if (!t) return;
+  if (cfg.apiKey && cfg.voiceMode !== "device") {
+    try { return await naturalVoice(t, cfg.voiceName || "Sulafat"); } catch (e) { /* sin clave, sin internet o sin cupo: voz del dispositivo */ }
+  }
+  return deviceVoice(t);
 }
 export const canListen = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 export function listen(onText, onEnd) {
