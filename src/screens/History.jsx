@@ -199,6 +199,24 @@ function EquipmentHistory({ ctx, it }) {
               <Legend items={[{ n: "L1", c: PH.L1 }, { n: "L2", c: PH.L2 }, { n: "L3", c: PH.L3 }]} />
             </ChartCard>
           )}
+          {E.voltage && E.voltage.some((k) => V(k).some((x) => x !== null)) && (() => {
+            // Tensión por fase, con la nominal de placa si existe; avisa si alguna lectura sale de ±10 % (EN 50160)
+            const vn = num((it.eq.plate || {}).vn);
+            const last = E.voltage.map((k) => { const v = V(k).filter((x) => x !== null); return v.length ? v[v.length - 1] : null; });
+            const all = E.voltage.flatMap((k) => V(k)).filter((x) => x !== null);
+            const out = vn ? all.filter((x) => Math.abs(x - vn) / vn > 0.1).length : 0;
+            return (
+              <ChartCard title="TENSIÓN POR FASE · V" delay={540}>
+                <LineChart delay={540} labels={labels} series={E.voltage.map((k, i) => ({ name: "L" + (i + 1), color: [PH.L1, PH.L2, PH.L3][i], values: V(k) }))}
+                  bands={vn ? [{ y: vn, color: "#8B8B93", label: "nominal" }] : null} />
+                <Legend items={[{ n: "L1", c: PH.L1 }, { n: "L2", c: PH.L2 }, { n: "L3", c: PH.L3 }]} />
+                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Última: {last.map((v, i) => "L" + (i + 1) + " " + (v === null ? "—" : fmt(v, 0))).join(" · ")} V
+                  {vn ? (out ? ` · ${out} ${out === 1 ? "lectura" : "lecturas"} fuera de ±10 % de ${fmt(vn, 0)} V` : ` · dentro de ±10 % de ${fmt(vn, 0)} V`) : ""}
+                </p>
+              </ChartCard>
+            );
+          })()}
           {(() => {
             const AUX = [{ k: "tBreaker", n: "Breaker", c: "#C08BFF" }, { k: "tContactor", n: "Contactor", c: "#3FD0B6" }, { k: "tBar", n: "Barras", c: "#FFB05C" }].filter((a) => V(a.k).some((x) => x !== null));
             if (!AUX.length) return null;
